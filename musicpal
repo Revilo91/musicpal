@@ -9,7 +9,153 @@ import bs4
 import httpx
 
 # =============================================================================
-# API Wrapper Functions
+# MusicPal Client Class
+# =============================================================================
+
+
+class MusicPalClient:
+    """Object-oriented client for interacting with MusicPal device APIs.
+
+    This class provides methods for each API interface available on the
+    MusicPal device.
+
+    Attributes:
+        hostname (str): IP or hostname of the MusicPal device.
+        username (str): Username for HTTP authorization.
+        password (str): Password for HTTP authorization.
+        timeout (float): Request timeout in seconds.
+    """
+
+    def __init__(
+        self,
+        hostname: str = "musicpal",
+        username: str = "admin",
+        password: str = "admin",
+        timeout: float = 10.0,
+    ):
+        """Initialize MusicPalClient.
+
+        Args:
+            hostname: IP or hostname of the MusicPal device.
+            username: Username for HTTP authorization.
+            password: Password for HTTP authorization.
+            timeout: Request timeout in seconds.
+        """
+        self.hostname = hostname
+        self.username = username
+        self.password = password
+        self.timeout = timeout
+
+    def admin_cgi(
+        self,
+        command: str,
+        extra_params: Optional[dict[str, Any]] = None,
+        method: str = "GET",
+    ) -> httpx.Response:
+        """Interface for calls to /admin/cgi-bin/admin.cgi.
+
+        This is the main API call interface. All calls require the function name
+        argument 'f'. Common additional arguments are:
+          n: next page, i.e. the page returned by the call
+          a: action
+          i: index
+
+        Some calls might require a HTTP POST.
+
+        Args:
+            command: Command/function name to execute.
+            extra_params: Additional API call parameters.
+            method: HTTP method to use (GET or POST).
+
+        Returns:
+            HTTP response from the API call.
+        """
+        if extra_params is None:
+            params = {"f": command}
+        else:
+            params = {"f": command}
+            params.update(extra_params)
+
+        with httpx.Client() as client:
+            return client.request(
+                method=method,
+                url=f"http://{self.hostname}/admin/cgi-bin/admin.cgi",
+                params=params,
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+            )
+
+    def debug_cgi(
+        self,
+        command: str,
+        extra_params: Optional[dict[str, Any]] = None,
+    ) -> httpx.Response:
+        """Interface for calls to /admin/cgi-bin/debug.cgi.
+
+        Args:
+            command: Command/function name to execute.
+            extra_params: Additional API call parameters.
+
+        Returns:
+            HTTP response from the API call.
+        """
+        if extra_params is None:
+            params = {"f": command}
+        else:
+            params = {"f": command}
+            params.update(extra_params)
+
+        with httpx.Client() as client:
+            return client.get(
+                url=f"http://{self.hostname}/admin/cgi-bin/debug.cgi",
+                params=params,
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+            )
+
+    def ipc_send(
+        self, command: str, args: Optional[list[str]] = None
+    ) -> httpx.Response:
+        """Interface for calls to /admin/cgi-bin/ipc_send.
+
+        ipc_send expects arguments separated by ampersands (i.e. not key,value
+        pairs separated by '=').
+
+        Args:
+            command: Command to send via IPC.
+            args: Additional arguments for the command.
+
+        Returns:
+            HTTP response from the API call.
+        """
+        if args is None:
+            args = []
+
+        with httpx.Client() as client:
+            return client.get(
+                url=f"http://{self.hostname}/admin/cgi-bin/ipc_send?"
+                + "&".join([command] + args),
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+            )
+
+    def state_cgi(self) -> httpx.Response:
+        """Interface for calls to /admin/cgi-bin/state.cgi.
+
+        Returns:
+            HTTP response from the API call.
+        """
+        with httpx.Client() as client:
+            return client.get(
+                url=f"http://{self.hostname}/admin/cgi-bin/state.cgi",
+                params={"fav": 0},
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+            )
+
+
+# =============================================================================
+# Legacy Wrapper Functions (for backward compatibility)
 # =============================================================================
 
 
@@ -18,88 +164,44 @@ def admin_cgi(
     extra_params: Optional[dict[str, Any]] = {},
     method: str = "GET",
 ) -> httpx.Response:
-    """Wrapper for calls to /admin/cgi-bin/admin.cgi.
-
-    This is the main API call interface. All calls require the function name
-    argument 'f'. Common additional arguments are:
-      n: next page, i.e. the page returned by the call
-      a: action
-      i: index
-
-    Some calls might require a HTTP POST.
+    """Legacy wrapper for calls to /admin/cgi-bin/admin.cgi.
 
     Args:
       args (argparse.Namespace): Command line arguments object.
       extra_params (dict or None): Additional API call parameters.
       method (str): HTTP method to use (GET or POST).
     """
-    if extra_params is None:
-        params = {}
-    else:
-        params = {"f": args.command}
-        params.update(extra_params)
-
-    with httpx.Client() as client:
-        return client.request(
-            method=method,
-            url=f"http://{args.hostname}/admin/cgi-bin/admin.cgi",
-            params=params,
-            auth=(args.username, args.password),
-            timeout=10.0,
-        )
+    client = MusicPalClient(args.hostname, args.username, args.password)
+    return client.admin_cgi(args.command, extra_params, method)
 
 
 def debug_cgi(
     args: argparse.Namespace,
     extra_params: Optional[dict[str, Any]] = {},
 ) -> httpx.Response:
-    """Wrapper for calls to /admin/cgi-bin/debug.cgi."""
-    if extra_params is None:
-        params = {}
-    else:
-        params = {"f": args.command}
-        params.update(extra_params)
-
-    with httpx.Client() as client:
-        return client.get(
-            url=f"http://{args.hostname}/admin/cgi-bin/debug.cgi",
-            params=params,
-            auth=(args.username, args.password),
-            timeout=10.0,
-        )
+    """Legacy wrapper for calls to /admin/cgi-bin/debug.cgi."""
+    client = MusicPalClient(args.hostname, args.username, args.password)
+    return client.debug_cgi(args.command, extra_params)
 
 
 def ipc_send(args: argparse.Namespace) -> httpx.Response:
-    """Wrapper for calls to /admin/cgi-bin/ipc_send.
-
-    ipc_send expects arguments separated by ampersands (i.e. not key,value pairs
-    separated by '=').
+    """Legacy wrapper for calls to /admin/cgi-bin/ipc_send.
 
     Args:
       args (argparse.Namespace): Command line arguments object.
     """
-    with httpx.Client() as client:
-        return client.get(
-            url=f"http://{args.hostname}/admin/cgi-bin/ipc_send?"
-            + "&".join([k for k in [args.command] + args.args]),
-            auth=(args.username, args.password),
-            timeout=10.0,
-        )
+    client = MusicPalClient(args.hostname, args.username, args.password)
+    return client.ipc_send(args.command, args.args)
 
 
 def state_cgi(args: argparse.Namespace) -> httpx.Response:
-    """Wrapper for calls to /admin/cgi-bin/state.cgi.
+    """Legacy wrapper for calls to /admin/cgi-bin/state.cgi.
 
     Args:
       args (argparse.Namespace): Command line arguments object.
     """
-    with httpx.Client() as client:
-        return client.get(
-            url=f"http://{args.hostname}/admin/cgi-bin/state.cgi",
-            params={"fav": 0},
-            auth=(args.username, args.password),
-            timeout=10.0,
-        )
+    client = MusicPalClient(args.hostname, args.username, args.password)
+    return client.state_cgi()
 
 
 # =============================================================================
