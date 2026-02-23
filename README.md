@@ -5,7 +5,7 @@
 
 ## musicpal
 
-Command line interface for remote controlling a _Freecom MusicPal_ media player.
+Command line interface and Home Assistant integration for remote controlling a _Freecom MusicPal_ media player.
 
 The Freecom MusicPal is one of the early hardware media players /
 internet radios that was released around 2007.
@@ -64,6 +64,47 @@ Available commands are:
 |`reboot`        | reboot device | None |
 |`restart`       | restart Nashville | None |
 |`state`         | display various information about device state | None |
+
+### Home Assistant Integration
+
+This repository includes a HACS-compatible Home Assistant custom integration for the Freecom MusicPal.
+
+#### Installation via HACS
+
+1. Make sure you have [HACS](https://hacs.xyz/) installed in your Home Assistant instance
+2. Add this repository as a custom repository in HACS:
+   - Go to HACS → Integrations
+   - Click the three dots in the top right corner
+   - Select "Custom repositories"
+   - Add `https://github.com/Revilo91/musicpal` as an Integration
+3. Click "Download" to install the integration
+4. Restart Home Assistant
+5. Go to Settings → Devices & Services → Add Integration
+6. Search for "MusicPal" and follow the configuration steps
+
+#### Manual Installation
+
+1. Copy the `custom_components/musicpal` directory to your Home Assistant `config/custom_components/` directory
+2. Restart Home Assistant
+3. Go to Settings → Devices & Services → Add Integration
+4. Search for "MusicPal" and follow the configuration steps
+
+#### Configuration
+
+During setup, you will need to provide:
+- **IP Address or Hostname**: The network address of your MusicPal device
+- **Username**: Admin username (default: `admin`)
+- **Password**: Admin password (default: `admin`)
+
+#### Features
+
+The integration provides a media player entity with support for:
+- Power on/off
+- Play/Pause control
+- Next track
+- Volume control (0-20 levels)
+- State monitoring (playing, paused, idle)
+- Media information (title, artist)
 
 ### Links
 

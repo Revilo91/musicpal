@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MusicPal Setup",
+        "description": "Configure your Freecom MusicPal device",
+        "data": {
+          "host": "IP Address or Hostname",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the MusicPal device. Please check the IP address and network connection.",
+      "timeout_connect": "Connection timeout. Please check if the device is powered on.",
+      "unknown": "An unknown error occurred. Please check the logs for more information."
+    },
+    "abort": {
+      "already_configured": "This MusicPal device is already configured."
+    }
+  }
+}

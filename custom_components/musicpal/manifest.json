@@ -1,0 +1,13 @@
+{
+  "domain": "musicpal",
+  "name": "Freecom MusicPal",
+  "version": "1.0.0",
+  "documentation": "https://github.com/Revilo91/musicpal",
+  "issue_tracker": "https://github.com/Revilo91/musicpal/issues",
+  "codeowners": ["@Revilo91"],
+  "requirements": ["httpx>=0.27.0", "beautifulsoup4>=4.12.0", "lxml>=4.9.0"],
+  "dependencies": [],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "integration_type": "device"
+}
