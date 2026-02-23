@@ -58,8 +58,12 @@ class MusicPalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_HOST): cv.string,
-                vol.Optional(CONF_USERNAME, default=DEFAULT_USERNAME): cv.string,
-                vol.Optional(CONF_PASSWORD, default=DEFAULT_PASSWORD): cv.string,
+                vol.Optional(
+                    CONF_USERNAME, default=DEFAULT_USERNAME
+                ): cv.string,
+                vol.Optional(
+                    CONF_PASSWORD, default=DEFAULT_PASSWORD
+                ): cv.string,
             }
         )
 

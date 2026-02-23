@@ -1,43 +1,41 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "Set up MusicPal",
-        "description": "Configure your Freecom MusicPal device",
-        "data": {
-          "host": "Hostname or IP address",
-          "username": "Username",
-          "password": "Password"
-        }
-      }
+    "config": {
+        "step": {
+            "user": {
+                "title": "Set up MusicPal",
+                "description": "Configure your Freecom MusicPal device",
+                "data": {
+                    "host": "Hostname or IP address",
+                    "username": "Username",
+                    "password": "Password",
+                },
+            }
+        },
+        "error": {
+            "cannot_connect": "Failed to connect to the device",
+            "invalid_auth": "Invalid authentication credentials",
+            "unknown": "Unexpected error occurred",
+        },
+        "abort": {"already_configured": "Device is already configured"},
     },
-    "error": {
-      "cannot_connect": "Failed to connect to the device",
-      "invalid_auth": "Invalid authentication credentials",
-      "unknown": "Unexpected error occurred"
+    "services": {
+        "show_message": {
+            "name": "Show message",
+            "description": "Display a message on the MusicPal screen",
+            "fields": {
+                "message": {
+                    "name": "Message",
+                    "description": "The message to display",
+                }
+            },
+        },
+        "show_clock": {
+            "name": "Show clock",
+            "description": "Display the clock on the MusicPal screen",
+        },
+        "reboot": {
+            "name": "Reboot",
+            "description": "Reboot the MusicPal device",
+        },
     },
-    "abort": {
-      "already_configured": "Device is already configured"
-    }
-  },
-  "services": {
-    "show_message": {
-      "name": "Show message",
-      "description": "Display a message on the MusicPal screen",
-      "fields": {
-        "message": {
-          "name": "Message",
-          "description": "The message to display"
-        }
-      }
-    },
-    "show_clock": {
-      "name": "Show clock",
-      "description": "Display the clock on the MusicPal screen"
-    },
-    "reboot": {
-      "name": "Reboot",
-      "description": "Reboot the MusicPal device"
-    }
-  }
 }

@@ -9,10 +9,18 @@ import httpx
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .const import DOMAIN, SCAN_INTERVAL
 from .musicpal_api import MusicPalClient
@@ -63,7 +71,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "uptime": uptime,
                 }
         except httpx.ConnectError as err:
-            raise UpdateFailed(f"Error communicating with device: {err}") from err
+            raise UpdateFailed(
+                f"Error communicating with device: {err}"
+            ) from err
         except httpx.HTTPStatusError as err:
             raise UpdateFailed(f"HTTP error from device: {err}") from err
 
@@ -131,7 +141,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+    if unload_ok := await hass.config_entries.async_unload_platforms(
+        entry, PLATFORMS
+    ):
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
