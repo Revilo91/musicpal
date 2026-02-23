@@ -70,12 +70,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "favorites": favorites,
                     "uptime": uptime,
                 }
-        except httpx.ConnectError as err:
+        except httpx.TimeoutException as err:
+            raise UpdateFailed(
+                f"Timeout communicating with device: {err}"
+            ) from err
+        except httpx.HTTPError as err:
             raise UpdateFailed(
                 f"Error communicating with device: {err}"
             ) from err
-        except httpx.HTTPStatusError as err:
-            raise UpdateFailed(f"HTTP error from device: {err}") from err
 
     coordinator = DataUpdateCoordinator(
         hass,
