@@ -1,10 +1,13 @@
 """MusicPal API client for Home Assistant integration."""
 
+import logging
 from typing import Any, Optional
 from datetime import timedelta
 
 import httpx
 import bs4
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class MusicPalClient:
@@ -61,15 +64,25 @@ class MusicPalClient:
             HTTP response object
         """
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context."
+            )
 
         params = {"f": function}
         if extra_params:
             params.update(extra_params)
 
+        url = f"http://{self.hostname}/admin/cgi-bin/admin.cgi"
+        _LOGGER.debug(
+            "Sending command to MusicPal: %s %s params=%s",
+            method,
+            url,
+            params,
+        )
+
         return await self._client.request(
             method=method,
-            url=f"http://{self.hostname}/admin/cgi-bin/admin.cgi",
+            url=url,
             params=params,
         )
 
@@ -88,14 +101,21 @@ class MusicPalClient:
             HTTP response object
         """
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context."
+            )
 
         params = {"f": function}
         if extra_params:
             params.update(extra_params)
 
+        url = f"http://{self.hostname}/admin/cgi-bin/debug.cgi"
+        _LOGGER.debug(
+            "Sending command to MusicPal: GET %s params=%s", url, params
+        )
+
         return await self._client.get(
-            url=f"http://{self.hostname}/admin/cgi-bin/debug.cgi",
+            url=url,
             params=params,
         )
 
@@ -110,12 +130,15 @@ class MusicPalClient:
             HTTP response object
         """
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context."
+            )
 
-        url = (
-            f"http://{self.hostname}/admin/cgi-bin/ipc_send?"
-            + "&".join([command] + list(args))
+        url = f"http://{self.hostname}/admin/cgi-bin/ipc_send?" + "&".join(
+            [command] + list(args)
         )
+        _LOGGER.debug("Sending command to MusicPal: GET %s", url)
+
         return await self._client.get(url)
 
     async def state_cgi(self) -> httpx.Response:
@@ -125,10 +148,17 @@ class MusicPalClient:
             HTTP response object
         """
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context."
+            )
+
+        url = f"http://{self.hostname}/admin/cgi-bin/state.cgi"
+        _LOGGER.debug(
+            "Sending command to MusicPal: GET %s params={'fav': 0}", url
+        )
 
         return await self._client.get(
-            url=f"http://{self.hostname}/admin/cgi-bin/state.cgi",
+            url=url,
             params={"fav": 0},
         )
 
