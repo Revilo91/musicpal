@@ -123,6 +123,12 @@ Additional entities provided:
 - Show clock on display
 - Close menu on display
 
+**Services:**
+- `musicpal.show_message`: Display a message box on the device
+- `musicpal.show_list`: Display a list on the device
+- `musicpal.play_url`: Play media from a URL
+- `musicpal.select_favorite`: Select and play a favorite by index
+
 ### Links
 
   * https://musicpal.mcproductions.nl/ - various information about the device

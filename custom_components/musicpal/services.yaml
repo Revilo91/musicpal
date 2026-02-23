@@ -1,0 +1,62 @@
+show_message:
+  name: Show Message
+  description: Display a message box on the MusicPal screen
+  target:
+    device:
+      integration: musicpal
+  fields:
+    message:
+      name: Message
+      description: Text to display on the device
+      required: true
+      example: "Hello from Home Assistant!"
+      selector:
+        text:
+
+show_list:
+  name: Show List
+  description: Display a list on the MusicPal screen
+  target:
+    device:
+      integration: musicpal
+  fields:
+    items:
+      name: List Items
+      description: Items to display (comma-separated)
+      required: true
+      example: "Item 1, Item 2, Item 3"
+      selector:
+        text:
+
+play_url:
+  name: Play URL
+  description: Play media from a URL
+  target:
+    device:
+      integration: musicpal
+  fields:
+    url:
+      name: URL
+      description: HTTP URL of the media file to play
+      required: true
+      example: "http://example.com/music.mp3"
+      selector:
+        text:
+
+select_favorite:
+  name: Select Favorite
+  description: Select and play a favorite by index
+  target:
+    device:
+      integration: musicpal
+  fields:
+    index:
+      name: Favorite Index
+      description: Index of the favorite to play (starting from 0)
+      required: true
+      example: 0
+      selector:
+        number:
+          min: 0
+          max: 99
+          mode: box
