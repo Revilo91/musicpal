@@ -3,3 +3,10 @@
 /dist/
 /musicpal.egg-info/
 __pycache__/
+*.pyc
+*.pyo
+*.egg
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/

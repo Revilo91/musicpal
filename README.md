@@ -2,10 +2,11 @@
 [![PyPi format](https://img.shields.io/pypi/format/musicpal)](https://pypi.org/project/musicpal/)
 [![PyPI license](https://img.shields.io/pypi/l/musicpal)](https://pypi.org/project/musicpal/)
 [![PyPi weekly downloads](https://img.shields.io/pypi/dw/musicpal)](https://pypi.org/project/musicpal/)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 
 ## musicpal
 
-Command line interface for remote controlling a _Freecom MusicPal_ media player.
+Control interface for the _Freecom MusicPal_ media player, available as both a command-line tool and a Home Assistant integration.
 
 The Freecom MusicPal is one of the early hardware media players /
 internet radios that was released around 2007.
@@ -18,7 +19,20 @@ The last stable firmware version 1.67 sports a 2.6.16 Linux
 kernel. All services are offered by a single application called
 _Nashville_ which, unfortunately, is closed source.
 
-### Usage
+## Home Assistant Integration
+
+This repository now includes a full Home Assistant custom integration! Install via HACS to control your MusicPal device directly from Home Assistant.
+
+**Features:**
+- Media player entity with full playback control
+- Sensor entities for device state, uptime, and favorites
+- Services for display messages and device management
+- UI-based configuration flow
+
+**Installation:**
+See [HACS_README.md](HACS_README.md) for detailed installation instructions, or [INSTALLATION_DE.md](INSTALLATION_DE.md) for German instructions.
+
+### Command Line Usage
 
 ```
 usage: musicpal [--help] [-h HOSTNAME] [-u USERNAME] [-p PASSWORD] [-d] [-l]

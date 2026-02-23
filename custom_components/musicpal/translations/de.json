@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MusicPal einrichten",
+        "description": "Konfigurieren Sie Ihr Freecom MusicPal-Gerät",
+        "data": {
+          "host": "Hostname oder IP-Adresse",
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Gerät fehlgeschlagen",
+      "invalid_auth": "Ungültige Anmeldedaten",
+      "unknown": "Unerwarteter Fehler aufgetreten"
+    },
+    "abort": {
+      "already_configured": "Gerät ist bereits konfiguriert"
+    }
+  },
+  "services": {
+    "show_message": {
+      "name": "Nachricht anzeigen",
+      "description": "Eine Nachricht auf dem MusicPal-Bildschirm anzeigen",
+      "fields": {
+        "message": {
+          "name": "Nachricht",
+          "description": "Die anzuzeigende Nachricht"
+        }
+      }
+    },
+    "show_clock": {
+      "name": "Uhr anzeigen",
+      "description": "Die Uhr auf dem MusicPal-Bildschirm anzeigen"
+    },
+    "reboot": {
+      "name": "Neustart",
+      "description": "Das MusicPal-Gerät neu starten"
+    }
+  }
+}
