@@ -106,6 +106,23 @@ The integration provides a media player entity with support for:
 - State monitoring (playing, paused, idle)
 - Media information (title, artist)
 
+Additional entities provided:
+
+**Sensors:**
+- Volume sensor
+- Source sensor
+- Title sensor
+- Artist sensor
+- Album sensor
+- State sensor
+- Uptime sensor
+
+**Buttons:**
+- Reboot device
+- Restart Nashville service
+- Show clock on display
+- Close menu on display
+
 ### Links
 
   * https://musicpal.mcproductions.nl/ - various information about the device
