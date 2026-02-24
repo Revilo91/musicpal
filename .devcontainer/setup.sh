@@ -17,20 +17,27 @@ export PATH="$HOME/.local/bin:$PATH"
 if command -v apt-get >/dev/null 2>&1 && [ -w /etc ]; then
   echo "Installing system dependencies..."
   sudo apt-get update -qq
-  sudo apt-get install -y build-essential python3 python3-dev
+  sudo apt-get install -y build-essential python3 python3-dev curl
 else
   echo "Skipping system dependencies (apt not available or no sudo)."
+fi
+
+# === uv setup ===
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Installing uv..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
 # === Virtual environment ===
 VENV_DIR="$WORKSPACE_ROOT/.venv"
 if [ ! -d "$VENV_DIR" ]; then
-  python3 -m venv "$VENV_DIR"
+  uv venv "$VENV_DIR"
 fi
 
-"$VENV_DIR/bin/python" -m pip install --upgrade pip
-"$VENV_DIR/bin/pip" install -e "$WORKSPACE_ROOT"
-"$VENV_DIR/bin/pip" install "homeassistant>=2024.7.0"
+uv pip install --upgrade pip --python "$VENV_DIR/bin/python"
+uv pip install -e "$WORKSPACE_ROOT" --python "$VENV_DIR/bin/python"
+uv pip install "homeassistant>=2024.7.0" \
+  --python "$VENV_DIR/bin/python"
 
 # === Home Assistant config ===
 if [ -d "/config" ]; then
