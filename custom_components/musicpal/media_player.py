@@ -46,6 +46,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.TURN_OFF
         | MediaPlayerEntityFeature.PLAY
         | MediaPlayerEntityFeature.PAUSE
+        | MediaPlayerEntityFeature.STOP
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.SELECT_SOURCE
@@ -179,6 +180,15 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to pause: %s", err)
+
+    async def async_media_stop(self) -> None:
+        """Send stop command."""
+        try:
+            async with self._client:
+                await self._client.play_pause()
+            await self.coordinator.async_request_refresh()
+        except httpx.HTTPError as err:
+            _LOGGER.error("Failed to stop: %s", err)
 
     async def async_media_next_track(self) -> None:
         """Send next track command."""
