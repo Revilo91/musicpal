@@ -13,8 +13,8 @@ from homeassistant.components.media_player import (
     MediaPlayerState,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_HOST, EVENT_STATE_CHANGED
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -76,6 +76,57 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         self._attr_name = "MusicPal"
         self._attr_unique_id = f"{config_entry.data[CONF_HOST]}_media_player"
         self._media_title: Optional[str] = None
+        self._media_artist: Optional[str] = None
+        self._media_album: Optional[str] = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listeners when added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.hass.bus.async_listen(
+                EVENT_STATE_CHANGED,
+                self._on_mass_state_changed,
+            )
+        )
+
+    @callback
+    def _on_mass_state_changed(self, event: Event) -> None:
+        """Track Music Assistant entity to read media metadata."""
+        entity_id: str = event.data.get("entity_id", "")
+        if not entity_id.startswith("media_player."):
+            return
+        if entity_id == self.entity_id:
+            return
+
+        new_state = event.data.get("new_state")
+        if new_state is None:
+            return
+
+        attrs = new_state.attributes
+        if attrs.get("app_id") != "music_assistant":
+            return
+
+        # Match by friendly_name to associate with our device.
+        if attrs.get("friendly_name") != self._attr_name:
+            return
+
+        title: Optional[str] = attrs.get("media_title")
+        artist: Optional[str] = attrs.get("media_artist")
+        album: Optional[str] = attrs.get("media_album_name")
+
+        changed = False
+        if title != self._media_title:
+            self._media_title = title
+            changed = True
+        if artist != self._media_artist:
+            self._media_artist = artist
+            changed = True
+        if album != self._media_album:
+            self._media_album = album
+            changed = True
+
+        if changed:
+            self.async_write_ha_state()
 
     @property
     def state(self) -> MediaPlayerState:
@@ -140,6 +191,16 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
             if now_playing:
                 return now_playing
         return None
+
+    @property
+    def media_artist(self) -> Optional[str]:
+        """Artist of current playing media."""
+        return self._media_artist
+
+    @property
+    def media_album_name(self) -> Optional[str]:
+        """Album name of current playing media."""
+        return self._media_album
 
     @property
     def media_content_id(self) -> Optional[str]:
@@ -249,8 +310,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     ) -> None:
         """Play a piece of media."""
         try:
-            # Get metadata from kwargs (provided by Music Assistant, etc.)
-            # Music Assistant passes metadata inside "extra" dict.
+            # Extract metadata from kwargs as fallback when the
+            # Music Assistant state listener has not (yet) fired.
             extra: dict[str, Any] = kwargs.get("extra", {})
             metadata: dict[str, Any] = extra.get("metadata", {}) or kwargs.get(
                 "metadata", {}
@@ -274,34 +335,23 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
                 or kwargs.get("media_album_name")
             )
 
-            # Build display message from available metadata
             if title:
-                display_parts = [title]
-                if artist:
-                    display_parts.append(f"by {artist}")
-                if album:
-                    display_parts.append(f"({album})")
-                display_message = " ".join(display_parts)
                 self._media_title = title
-            else:
-                # No metadata provided
-                display_message = "Unknown"
-                self._media_title = None
+            if artist:
+                self._media_artist = artist
+            if album:
+                self._media_album = album
 
             async with self._make_client() as api:
-                # Show the metadata on the device display
-                await api.show_message(display_message)
-                # Play the media
                 await api.play_url(media_id)
 
             # Keep content ID in sync so media_content_id reflects the URL.
             self._upnp_state["avt_uri"] = media_id
 
-            _LOGGER.info(
-                "Playing media: %s (URL: %s, kwargs: %s)",
-                display_message,
+            _LOGGER.debug(
+                "Playing media: %s (URL: %s)",
+                self._media_title or "Unknown",
                 media_id,
-                kwargs,
             )
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
