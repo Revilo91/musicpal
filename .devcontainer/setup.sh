@@ -35,7 +35,9 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 uv pip install --upgrade pip --python "$VENV_DIR/bin/python"
-uv pip install -e "$WORKSPACE_ROOT" --python "$VENV_DIR/bin/python"
+uv pip install -e "$WORKSPACE_ROOT" \
+  --config-settings editable_mode=compat \
+  --python "$VENV_DIR/bin/python"
 uv pip install "homeassistant>=2024.7.0" \
   --python "$VENV_DIR/bin/python"
 
