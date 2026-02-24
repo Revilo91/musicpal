@@ -103,9 +103,9 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
 
         if "clock" in display.lower():
             return MediaPlayerState.IDLE
-        if "playing" in display.lower() or state_data.get("playing"):
+        if "playing" in display.lower() or state_data.get("playing") == "1":
             return MediaPlayerState.PLAYING
-        if "pause" in display.lower() or state_data.get("paused"):
+        if "pause" in display.lower() or state_data.get("paused") == "1":
             return MediaPlayerState.PAUSED
 
         return MediaPlayerState.IDLE
@@ -132,7 +132,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     def media_title(self) -> Optional[str]:
         """Title of current playing media."""
         # Prefer the title set via async_play_media (includes metadata).
-        #if self._media_title:
+        # if self._media_title:
         #    return self._media_title
         # Fall back to the now_playing string fetched from the device.
         if self.coordinator.data:

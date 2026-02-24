@@ -27,11 +27,55 @@ UPNP_DESCRIPTION_CANDIDATES = [
 ]
 
 
+def _parse_last_change(last_change_xml: str) -> dict[str, str]:
+    """Parse the LastChange XML value from a UPnP AVTransport NOTIFY event.
+
+    The ``LastChange`` property value is an XML-encoded ``<Event>``
+    document where each state variable is a child element of
+    ``<InstanceID>`` with a ``val`` attribute::
+
+        <Event xmlns="urn:schemas-upnp-org:metadata-1-0/AVT/">
+          <InstanceID val="0">
+            <TransportState val="PAUSED_PLAYBACK"/>
+            <AVTransportURI val="http://..."/>
+          </InstanceID>
+        </Event>
+
+    Args:
+        last_change_xml: XML string value of the LastChange property.
+
+    Returns:
+        Mapping of UPnP variable name to its string value.
+    """
+    result: dict[str, str] = {}
+    try:
+        root = ElementTree.fromstring(last_change_xml)
+        for instance in root:
+            tag = instance.tag
+            if "}" in tag:
+                tag = tag.split("}", 1)[1]
+            if tag != "InstanceID":
+                continue
+            for var in instance:
+                var_tag = var.tag
+                if "}" in var_tag:
+                    var_tag = var_tag.split("}", 1)[1]
+                val = var.get("val")
+                if val is not None:
+                    result[var_tag] = val
+    except ElementTree.ParseError as err:
+        _LOGGER.debug("Failed to parse UPnP LastChange XML: %s", err)
+    return result
+
+
 def parse_upnp_notify_body(body: bytes) -> dict[str, str]:
     """Parse a UPnP NOTIFY body and return its state variables.
 
     The body is a ``<e:propertyset>`` XML document.  Each child
     ``<e:property>`` contains one or more variable name/value elements.
+    When a ``LastChange`` property is present (as in AVTransport events),
+    it is parsed as a nested XML document and its variables are merged
+    into the result.
 
     Args:
         body: Raw XML bytes from the NOTIFY request body.
@@ -53,6 +97,11 @@ def parse_upnp_notify_body(body: bytes) -> dict[str, str]:
                     result[tag] = var.text
     except ElementTree.ParseError as err:
         _LOGGER.debug("Failed to parse UPnP NOTIFY body: %s", err)
+    # AVTransport NOTIFY events embed state variables inside a LastChange
+    # XML-encoded string.  Parse it and merge the extracted variables.
+    last_change = result.pop("LastChange", None)
+    if last_change is not None:
+        result.update(_parse_last_change(last_change))
     return result
 
 
