@@ -49,16 +49,19 @@ SERVICE_SCHEMA = vol.Schema(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MusicPal from a config entry."""
-    client = MusicPalClient(
-        hostname=entry.data[CONF_HOST],
-        username=entry.data.get(CONF_USERNAME, "admin"),
-        password=entry.data.get(CONF_PASSWORD, "admin"),
-    )
+
+    def _make_client() -> MusicPalClient:
+        """Create a fresh MusicPalClient from config entry data."""
+        return MusicPalClient(
+            hostname=entry.data[CONF_HOST],
+            username=entry.data.get(CONF_USERNAME, "admin"),
+            password=entry.data.get(CONF_PASSWORD, "admin"),
+        )
 
     async def async_update_data():
         """Fetch data from API."""
         try:
-            async with client as api:
+            async with _make_client() as api:
                 state = await api.get_state()
                 volume = await api.get_volume()
                 favorites = await api.get_favorites()
@@ -93,7 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
-        "client": client,
+        "make_client": _make_client,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -101,20 +104,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_show_message_service(call: ServiceCall) -> None:
         """Handle show_message service call."""
         message = call.data.get("message")
-        async with client:
-            await client.show_message(message)
+        async with _make_client() as api:
+            await api.show_message(message)
         await coordinator.async_request_refresh()
 
     async def async_show_clock_service(call: ServiceCall) -> None:
         """Handle show_clock service call."""
-        async with client:
-            await client.show_clock()
+        async with _make_client() as api:
+            await api.show_clock()
         await coordinator.async_request_refresh()
 
     async def async_reboot_service(call: ServiceCall) -> None:
         """Handle reboot service call."""
-        async with client:
-            await client.reboot()
+        async with _make_client() as api:
+            await api.reboot()
 
     # Register services
     hass.services.async_register(

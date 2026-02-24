@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -31,9 +31,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up the MusicPal media player platform."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
-    client = hass.data[DOMAIN][config_entry.entry_id]["client"]
+    make_client = hass.data[DOMAIN][config_entry.entry_id]["make_client"]
 
-    async_add_entities([MusicPalMediaPlayer(coordinator, client, config_entry)])
+    async_add_entities(
+        [MusicPalMediaPlayer(coordinator, make_client, config_entry)]
+    )
 
 
 class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
@@ -55,12 +57,12 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     def __init__(
         self,
         coordinator,
-        client: MusicPalClient,
+        make_client: Callable[[], MusicPalClient],
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the MusicPal media player."""
         super().__init__(coordinator)
-        self._client = client
+        self._make_client = make_client
         self._attr_name = "MusicPal"
         self._attr_unique_id = f"{config_entry.data[CONF_HOST]}_media_player"
         self._media_title: str | None = None
@@ -126,8 +128,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_turn_on(self) -> None:
         """Turn the media player on."""
         try:
-            async with self._client:
-                await self._client.power_on()
+            async with self._make_client() as api:
+                await api.power_on()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to turn on MusicPal: %s", err)
@@ -135,8 +137,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_turn_off(self) -> None:
         """Turn the media player off."""
         try:
-            async with self._client:
-                await self._client.power_off()
+            async with self._make_client() as api:
+                await api.power_off()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to turn off MusicPal: %s", err)
@@ -145,8 +147,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         """Set volume level, range 0..1."""
         try:
             volume_int = int(volume * 20)  # Convert from 0-1 to 0-20
-            async with self._client:
-                await self._client.set_volume(volume_int)
+            async with self._make_client() as api:
+                await api.set_volume(volume_int)
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to set volume: %s", err)
@@ -154,8 +156,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_volume_up(self) -> None:
         """Volume up the media player."""
         try:
-            async with self._client:
-                await self._client.volume_up()
+            async with self._make_client() as api:
+                await api.volume_up()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to increase volume: %s", err)
@@ -163,8 +165,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_volume_down(self) -> None:
         """Volume down the media player."""
         try:
-            async with self._client:
-                await self._client.volume_down()
+            async with self._make_client() as api:
+                await api.volume_down()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to decrease volume: %s", err)
@@ -172,8 +174,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_media_play(self) -> None:
         """Send play command."""
         try:
-            async with self._client:
-                await self._client.play_pause()
+            async with self._make_client() as api:
+                await api.play_pause()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to play: %s", err)
@@ -181,8 +183,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_media_pause(self) -> None:
         """Send pause command."""
         try:
-            async with self._client:
-                await self._client.play_pause()
+            async with self._make_client() as api:
+                await api.play_pause()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to pause: %s", err)
@@ -190,8 +192,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_media_stop(self) -> None:
         """Send stop command."""
         try:
-            async with self._client:
-                await self._client.play_pause()
+            async with self._make_client() as api:
+                await api.play_pause()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to stop: %s", err)
@@ -199,8 +201,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     async def async_media_next_track(self) -> None:
         """Send next track command."""
         try:
-            async with self._client:
-                await self._client.next_track()
+            async with self._make_client() as api:
+                await api.next_track()
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to skip to next track: %s", err)
@@ -242,11 +244,11 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
                 display_message = "Unknown"
                 self._media_title = None
 
-            async with self._client:
+            async with self._make_client() as api:
                 # Show the metadata on the device display
-                await self._client.show_message(display_message)
+                await api.show_message(display_message)
                 # Play the media
-                await self._client.play_url(media_id)
+                await api.play_url(media_id)
 
             _LOGGER.info(
                 "Playing media: %s (URL: %s, kwargs: %s)",
@@ -267,8 +269,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         for fav in favorites:
             if fav["name"] == source:
                 try:
-                    async with self._client:
-                        await self._client.play_favorite(fav["index"])
+                    async with self._make_client() as api:
+                        await api.play_favorite(fav["index"])
                     await self.coordinator.async_request_refresh()
                     return
                 except httpx.HTTPError as err:
