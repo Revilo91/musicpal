@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import httpx
 
@@ -32,9 +32,14 @@ async def async_setup_entry(
     """Set up the MusicPal media player platform."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     make_client = hass.data[DOMAIN][config_entry.entry_id]["make_client"]
+    upnp_state = hass.data[DOMAIN][config_entry.entry_id]["upnp_state"]
 
     async_add_entities(
-        [MusicPalMediaPlayer(coordinator, make_client, config_entry)]
+        [
+            MusicPalMediaPlayer(
+                coordinator, make_client, config_entry, upnp_state
+            )
+        ]
     )
 
 
@@ -56,27 +61,46 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
 
     def __init__(
         self,
-        coordinator,
+        coordinator: Any,
         make_client: Callable[[], MusicPalClient],
         config_entry: ConfigEntry,
+        upnp_state: dict[str, Optional[str]],
     ) -> None:
         """Initialize the MusicPal media player."""
         super().__init__(coordinator)
         self._make_client = make_client
+        # _upnp_state is a dict shared with __init__.py's UPnP callback.
+        # Both the NOTIFY handler and all entity property reads execute on
+        # the single-threaded HA event loop, so no locking is needed.
+        self._upnp_state = upnp_state
         self._attr_name = "MusicPal"
         self._attr_unique_id = f"{config_entry.data[CONF_HOST]}_media_player"
-        self._media_title: str | None = None
+        self._media_title: Optional[str] = None
 
     @property
     def state(self) -> MediaPlayerState:
-        """Return the state of the device."""
+        """Return the state of the device.
+
+        UPnP AVTransport state (when available) takes precedence over
+        the heuristic based on the device's display text.
+        """
+        # Real-time state from UPnP NOTIFY events.
+        transport_state = self._upnp_state.get("transport_state")
+        if transport_state is not None:
+            if transport_state == "PLAYING":
+                return MediaPlayerState.PLAYING
+            if transport_state == "PAUSED_PLAYBACK":
+                return MediaPlayerState.PAUSED
+            if transport_state in ("STOPPED", "NO_MEDIA_PRESENT"):
+                return MediaPlayerState.IDLE
+
+        # Fallback: derive state from polled coordinator data.
         if not self.coordinator.data:
             return MediaPlayerState.OFF
 
         state_data = self.coordinator.data.get("state", {})
         display = state_data.get("display", "")
 
-        # Try to determine state from display content
         if "clock" in display.lower():
             return MediaPlayerState.IDLE
         if "playing" in display.lower() or state_data.get("playing"):
@@ -87,7 +111,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         return MediaPlayerState.IDLE
 
     @property
-    def volume_level(self) -> float | None:
+    def volume_level(self) -> Optional[float]:
         """Volume level of the media player (0..1)."""
         if not self.coordinator.data:
             return None
@@ -96,7 +120,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         return volume / 20.0  # Convert from 0-20 to 0-1
 
     @property
-    def source_list(self) -> list[str] | None:
+    def source_list(self) -> Optional[list[str]]:
         """List of available input sources."""
         if not self.coordinator.data:
             return None
@@ -105,9 +129,22 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         return [fav["name"] for fav in favorites]
 
     @property
-    def media_title(self) -> str | None:
+    def media_title(self) -> Optional[str]:
         """Title of current playing media."""
-        return self._media_title
+        # Prefer the title set via async_play_media (includes metadata).
+        if self._media_title:
+            return self._media_title
+        # Fall back to the now_playing string fetched from the device.
+        if self.coordinator.data:
+            now_playing: str = self.coordinator.data.get("now_playing", "")
+            if now_playing:
+                return now_playing
+        return None
+
+    @property
+    def media_content_id(self) -> Optional[str]:
+        """Content ID (URL) of the currently playing media."""
+        return self._upnp_state.get("avt_uri")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -115,7 +152,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         if not self.coordinator.data:
             return {}
 
-        attrs = {}
+        attrs: dict[str, Any] = {}
 
         if uptime := self.coordinator.data.get("uptime"):
             attrs[ATTR_UPTIME] = str(uptime)
@@ -249,6 +286,9 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
                 await api.show_message(display_message)
                 # Play the media
                 await api.play_url(media_id)
+
+            # Keep content ID in sync so media_content_id reflects the URL.
+            self._upnp_state["avt_uri"] = media_id
 
             _LOGGER.info(
                 "Playing media: %s (URL: %s, kwargs: %s)",
