@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -32,6 +32,9 @@ async def async_setup_entry(
 class MusicPalUpTimeSensor(CoordinatorEntity, SensorEntity):
     """Representation of the MusicPal uptime sensor."""
 
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+
     def __init__(self, coordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -40,14 +43,14 @@ class MusicPalUpTimeSensor(CoordinatorEntity, SensorEntity):
         self._attr_icon = "mdi:clock-outline"
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> float | None:
         """Return the state of the sensor."""
         if not self.coordinator.data:
             return None
 
         uptime = self.coordinator.data.get("uptime")
         if uptime:
-            return str(uptime)
+            return float(uptime.total_seconds())
         return None
 
 
