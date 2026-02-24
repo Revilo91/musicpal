@@ -1,5 +1,6 @@
 """MusicPal API client for Home Assistant integration."""
 
+import asyncio
 import logging
 from typing import Any, Optional
 from datetime import timedelta
@@ -8,6 +9,11 @@ import httpx
 import bs4
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _build_soup(content: bytes) -> bs4.BeautifulSoup:
+    """Build a BeautifulSoup instance from response bytes."""
+    return bs4.BeautifulSoup(content, "lxml")
 
 
 class MusicPalClient:
@@ -33,6 +39,11 @@ class MusicPalClient:
         self.password = password
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
+
+    async def _parse_soup(self, content: bytes) -> bs4.BeautifulSoup:
+        """Parse HTML content in a thread to avoid blocking the event loop."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _build_soup, content)
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -171,7 +182,7 @@ class MusicPalClient:
         response = await self.state_cgi()
         response.raise_for_status()
 
-        soup = bs4.BeautifulSoup(response.content, "lxml")
+        soup = await self._parse_soup(response.content)
         state = {}
 
         if soup.state:
@@ -193,7 +204,7 @@ class MusicPalClient:
         )
         response.raise_for_status()
 
-        soup = bs4.BeautifulSoup(response.content, "lxml")
+        soup = await self._parse_soup(response.content)
         volume = len(soup.find_all("img", src="/images/volume_on.gif")) - 1
         return max(0, volume)
 
@@ -275,7 +286,7 @@ class MusicPalClient:
         )
         response.raise_for_status()
 
-        soup = bs4.BeautifulSoup(response.content, "lxml")
+        soup = await self._parse_soup(response.content)
         favorites = []
 
         for i, fav_tag in enumerate(soup.find_all(class_="table_alt1")):
@@ -315,7 +326,7 @@ class MusicPalClient:
         )
         response.raise_for_status()
 
-        soup = bs4.BeautifulSoup(response.content, "lxml")
+        soup = await self._parse_soup(response.content)
         content = soup.find(class_="content_content")
         if content:
             return " ".join(content.stripped_strings)
@@ -334,7 +345,7 @@ class MusicPalClient:
         )
         response.raise_for_status()
 
-        soup = bs4.BeautifulSoup(response.content, "lxml")
+        soup = await self._parse_soup(response.content)
         text = (soup.string if soup.string else "").strip()
         if text:
             parts = text.split()
