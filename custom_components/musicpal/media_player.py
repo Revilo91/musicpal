@@ -63,6 +63,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         self._client = client
         self._attr_name = "MusicPal"
         self._attr_unique_id = f"{config_entry.data[CONF_HOST]}_media_player"
+        self._media_title: str | None = None
 
     @property
     def state(self) -> MediaPlayerState:
@@ -100,6 +101,11 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
 
         favorites = self.coordinator.data.get("favorites", [])
         return [fav["name"] for fav in favorites]
+
+    @property
+    def media_title(self) -> str | None:
+        """Title of current playing media."""
+        return self._media_title
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -204,8 +210,50 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     ) -> None:
         """Play a piece of media."""
         try:
+            # Get metadata from kwargs (provided by Music Assistant, etc.)
+            metadata = kwargs.get("metadata", {})
+            title = (
+                kwargs.get("title")
+                or metadata.get("title")
+                or kwargs.get("media_title")
+            )
+            artist = (
+                kwargs.get("artist")
+                or metadata.get("artist")
+                or kwargs.get("media_artist")
+            )
+            album = (
+                kwargs.get("album")
+                or metadata.get("album")
+                or kwargs.get("media_album_name")
+            )
+
+            # Build display message from available metadata
+            if title:
+                display_parts = [title]
+                if artist:
+                    display_parts.append(f"by {artist}")
+                if album:
+                    display_parts.append(f"({album})")
+                display_message = " ".join(display_parts)
+                self._media_title = title
+            else:
+                # No metadata provided
+                display_message = "Unknown"
+                self._media_title = None
+
             async with self._client:
+                # Show the metadata on the device display
+                await self._client.show_message(display_message)
+                # Play the media
                 await self._client.play_url(media_id)
+
+            _LOGGER.info(
+                "Playing media: %s (URL: %s, kwargs: %s)",
+                display_message,
+                media_id,
+                kwargs,
+            )
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to play media: %s", err)
