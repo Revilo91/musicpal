@@ -132,7 +132,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     def media_title(self) -> Optional[str]:
         """Title of current playing media."""
         # Prefer the title set via async_play_media (includes metadata).
-        #if self._media_title:
+        # if self._media_title:
         #    return self._media_title
         # Fall back to the now_playing string fetched from the device.
         if self.coordinator.data:
@@ -283,7 +283,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
 
             async with self._make_client() as api:
                 # Show the metadata on the device display
-                # await api.show_message(display_message)
+                await api.show_message(display_message)
                 # Play the media
                 await api.play_url(media_id)
 
