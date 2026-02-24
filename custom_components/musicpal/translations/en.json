@@ -7,16 +7,16 @@
                 "data": {
                     "host": "Hostname or IP address",
                     "username": "Username",
-                    "password": "Password",
-                },
+                    "password": "Password"
+                }
             }
         },
         "error": {
             "cannot_connect": "Failed to connect to the device",
             "invalid_auth": "Invalid authentication credentials",
-            "unknown": "Unexpected error occurred",
+            "unknown": "Unexpected error occurred"
         },
-        "abort": {"already_configured": "Device is already configured"},
+        "abort": {"already_configured": "Device is already configured"}
     },
     "services": {
         "show_message": {
@@ -25,17 +25,17 @@
             "fields": {
                 "message": {
                     "name": "Message",
-                    "description": "The message to display",
+                    "description": "The message to display"
                 }
-            },
+            }
         },
         "show_clock": {
             "name": "Show clock",
-            "description": "Display the clock on the MusicPal screen",
+            "description": "Display the clock on the MusicPal screen"
         },
         "reboot": {
             "name": "Reboot",
-            "description": "Reboot the MusicPal device",
-        },
-    },
+            "description": "Reboot the MusicPal device"
+        }
+    }
 }

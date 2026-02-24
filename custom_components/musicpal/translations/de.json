@@ -7,16 +7,16 @@
                 "data": {
                     "host": "Hostname oder IP-Adresse",
                     "username": "Benutzername",
-                    "password": "Passwort",
-                },
+                    "password": "Passwort"
+                }
             }
         },
         "error": {
             "cannot_connect": "Verbindung zum Gerät fehlgeschlagen",
             "invalid_auth": "Ungültige Anmeldedaten",
-            "unknown": "Unerwarteter Fehler aufgetreten",
+            "unknown": "Unerwarteter Fehler aufgetreten"
         },
-        "abort": {"already_configured": "Gerät ist bereits konfiguriert"},
+        "abort": {"already_configured": "Gerät ist bereits konfiguriert"}
     },
     "services": {
         "show_message": {
@@ -25,17 +25,17 @@
             "fields": {
                 "message": {
                     "name": "Nachricht",
-                    "description": "Die anzuzeigende Nachricht",
+                    "description": "Die anzuzeigende Nachricht"
                 }
-            },
+            }
         },
         "show_clock": {
             "name": "Uhr anzeigen",
-            "description": "Die Uhr auf dem MusicPal-Bildschirm anzeigen",
+            "description": "Die Uhr auf dem MusicPal-Bildschirm anzeigen"
         },
         "reboot": {
             "name": "Neustart",
-            "description": "Das MusicPal-Gerät neu starten",
-        },
-    },
+            "description": "Das MusicPal-Gerät neu starten"
+        }
+    }
 }
