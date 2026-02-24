@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from urllib.parse import unquote, urlparse
 
 import httpx
 
@@ -23,31 +22,6 @@ from .const import ATTR_FAVORITES, ATTR_UPTIME, DOMAIN
 from .musicpal_api import MusicPalClient
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def extract_title_from_url(url: str) -> str:
-    """Extract a readable title from a media URL.
-
-    Args:
-        url: The media URL to parse
-
-    Returns:
-        A human-readable title extracted from the URL filename
-    """
-    try:
-        parsed = urlparse(url)
-        # Get the last part of the path (filename)
-        filename = parsed.path.split("/")[-1]
-        # URL decode in case there are encoded characters
-        filename = unquote(filename)
-        # Remove file extension
-        title = filename.rsplit(".", 1)[0] if "." in filename else filename
-        # Replace common separators with spaces
-        title = title.replace("_", " ").replace("-", " ")
-        return title if title else "Unknown"
-    except Exception as err:
-        _LOGGER.debug("Failed to extract title from URL %s: %s", url, err)
-        return "Unknown"
 
 
 async def async_setup_entry(
@@ -254,9 +228,9 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
                 display_message = " ".join(display_parts)
                 self._media_title = title
             else:
-                # Fallback to extracting from URL if no metadata provided
-                display_message = extract_title_from_url(media_id)
-                self._media_title = display_message
+                # No metadata provided
+                display_message = "Unknown"
+                self._media_title = None
 
             async with self._client:
                 # Show the metadata on the device display
