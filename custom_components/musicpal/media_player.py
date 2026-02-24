@@ -132,8 +132,8 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     def media_title(self) -> Optional[str]:
         """Title of current playing media."""
         # Prefer the title set via async_play_media (includes metadata).
-        #if self._media_title:
-        #    return self._media_title
+        if self._media_title:
+            return self._media_title
         # Fall back to the now_playing string fetched from the device.
         if self.coordinator.data:
             now_playing: str = self.coordinator.data.get("now_playing", "")
@@ -250,20 +250,27 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         """Play a piece of media."""
         try:
             # Get metadata from kwargs (provided by Music Assistant, etc.)
-            metadata = kwargs.get("metadata", {})
+            # Music Assistant passes metadata inside "extra" dict.
+            extra: dict[str, Any] = kwargs.get("extra", {})
+            metadata: dict[str, Any] = extra.get("metadata", {}) or kwargs.get(
+                "metadata", {}
+            )
             title = (
-                kwargs.get("title")
+                extra.get("title")
                 or metadata.get("title")
+                or kwargs.get("title")
                 or kwargs.get("media_title")
             )
             artist = (
-                kwargs.get("artist")
+                extra.get("artist")
                 or metadata.get("artist")
+                or kwargs.get("artist")
                 or kwargs.get("media_artist")
             )
             album = (
-                kwargs.get("album")
+                extra.get("album")
                 or metadata.get("album")
+                or kwargs.get("album")
                 or kwargs.get("media_album_name")
             )
 
@@ -283,7 +290,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
 
             async with self._make_client() as api:
                 # Show the metadata on the device display
-                # await api.show_message(display_message)
+                await api.show_message(display_message)
                 # Play the media
                 await api.play_url(media_id)
 
