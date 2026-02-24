@@ -335,12 +335,9 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
                 or kwargs.get("media_album_name")
             )
 
-            if title:
-                self._media_title = title
-            if artist:
-                self._media_artist = artist
-            if album:
-                self._media_album = album
+            self._media_title = title
+            self._media_artist = artist
+            self._media_album = album
 
             async with self._make_client() as api:
                 await api.play_url(media_id)
