@@ -226,17 +226,50 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     ) -> None:
         """Play a piece of media."""
         try:
-            # Extract title from URL
-            title = extract_title_from_url(media_id)
-            self._media_title = title
+            # Get metadata from kwargs (provided by Music Assistant, etc.)
+            metadata = kwargs.get("metadata", {})
+            title = (
+                kwargs.get("title")
+                or metadata.get("title")
+                or kwargs.get("media_title")
+            )
+            artist = (
+                kwargs.get("artist")
+                or metadata.get("artist")
+                or kwargs.get("media_artist")
+            )
+            album = (
+                kwargs.get("album")
+                or metadata.get("album")
+                or kwargs.get("media_album_name")
+            )
+
+            # Build display message from available metadata
+            if title:
+                display_parts = [title]
+                if artist:
+                    display_parts.append(f"by {artist}")
+                if album:
+                    display_parts.append(f"({album})")
+                display_message = " ".join(display_parts)
+                self._media_title = title
+            else:
+                # Fallback to extracting from URL if no metadata provided
+                display_message = extract_title_from_url(media_id)
+                self._media_title = display_message
 
             async with self._client:
-                # Show the title on the device display
-                await self._client.show_message(title)
+                # Show the metadata on the device display
+                await self._client.show_message(display_message)
                 # Play the media
                 await self._client.play_url(media_id)
 
-            _LOGGER.info("Playing media: %s (%s)", title, media_id)
+            _LOGGER.info(
+                "Playing media: %s (URL: %s, kwargs: %s)",
+                display_message,
+                media_id,
+                kwargs,
+            )
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to play media: %s", err)
