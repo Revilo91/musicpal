@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import httpx
 
@@ -22,6 +23,31 @@ from .const import ATTR_FAVORITES, ATTR_UPTIME, DOMAIN
 from .musicpal_api import MusicPalClient
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def extract_title_from_url(url: str) -> str:
+    """Extract a readable title from a media URL.
+
+    Args:
+        url: The media URL to parse
+
+    Returns:
+        A human-readable title extracted from the URL filename
+    """
+    try:
+        parsed = urlparse(url)
+        # Get the last part of the path (filename)
+        filename = parsed.path.split("/")[-1]
+        # URL decode in case there are encoded characters
+        filename = unquote(filename)
+        # Remove file extension
+        title = filename.rsplit(".", 1)[0] if "." in filename else filename
+        # Replace common separators with spaces
+        title = title.replace("_", " ").replace("-", " ")
+        return title if title else "Unknown"
+    except Exception as err:
+        _LOGGER.debug("Failed to extract title from URL %s: %s", url, err)
+        return "Unknown"
 
 
 async def async_setup_entry(
@@ -62,6 +88,7 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         self._client = client
         self._attr_name = "MusicPal"
         self._attr_unique_id = f"{config_entry.data[CONF_HOST]}_media_player"
+        self._media_title: str | None = None
 
     @property
     def state(self) -> MediaPlayerState:
@@ -99,6 +126,11 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
 
         favorites = self.coordinator.data.get("favorites", [])
         return [fav["name"] for fav in favorites]
+
+    @property
+    def media_title(self) -> str | None:
+        """Title of current playing media."""
+        return self._media_title
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -194,8 +226,17 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
     ) -> None:
         """Play a piece of media."""
         try:
+            # Extract title from URL
+            title = extract_title_from_url(media_id)
+            self._media_title = title
+
             async with self._client:
+                # Show the title on the device display
+                await self._client.show_message(title)
+                # Play the media
                 await self._client.play_url(media_id)
+
+            _LOGGER.info("Playing media: %s (%s)", title, media_id)
             await self.coordinator.async_request_refresh()
         except httpx.HTTPError as err:
             _LOGGER.error("Failed to play media: %s", err)
