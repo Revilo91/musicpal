@@ -29,6 +29,6 @@ automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
 
-# Uncomment to configure musicpal manually (optional)
-# musicpal:
-#   host: "YOUR_MUSICPAL_IP_HERE"
+# musicpal is config-flow only: add it via
+# Settings -> Devices & Services -> Add Integration -> MusicPal.
+# There is no YAML configuration.

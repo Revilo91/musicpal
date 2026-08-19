@@ -3,13 +3,19 @@
 import argparse
 import logging
 import sys
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import bs4
 import httpx
 
 _LOGGER = logging.getLogger(__name__)
+
+# Default for `extra_params`: send only the function name. This is distinct
+# from an explicit None, which means "send no query parameters at all" and is
+# what the `log` command needs. Never mutated, only read.
+_NO_EXTRA_PARAMS: dict[str, Any] = {}
 
 # =============================================================================
 # API Wrapper Functions
@@ -18,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def admin_cgi(
     args: argparse.Namespace,
-    extra_params: Optional[dict[str, Any]] = {},
+    extra_params: Optional[dict[str, Any]] = _NO_EXTRA_PARAMS,
     method: str = "GET",
 ) -> httpx.Response:
     """Wrapper for calls to /admin/cgi-bin/admin.cgi.
@@ -59,7 +65,7 @@ def admin_cgi(
 
 def debug_cgi(
     args: argparse.Namespace,
-    extra_params: Optional[dict[str, Any]] = {},
+    extra_params: Optional[dict[str, Any]] = _NO_EXTRA_PARAMS,
 ) -> httpx.Response:
     """Wrapper for calls to /admin/cgi-bin/debug.cgi."""
     if extra_params is None:
@@ -90,7 +96,7 @@ def ipc_send(args: argparse.Namespace) -> httpx.Response:
       args (argparse.Namespace): Command line arguments object.
     """
     url = f"http://{args.hostname}/admin/cgi-bin/ipc_send?" + "&".join(
-        [k for k in [args.command] + args.args]
+        [args.command] + args.args
     )
     _LOGGER.debug("Sending command to MusicPal: GET %s", url)
 
@@ -267,7 +273,10 @@ def main() -> None:
             "command",
             default="state",
             nargs="?",
-            help="command for sending to the MusicPal device (default: %(default)s)",
+            help=(
+                "command for sending to the MusicPal device "
+                "(default: %(default)s)"
+            ),
         )
         parser.add_argument(
             "args", nargs="*", help="(optional) arguments for given command"
@@ -303,40 +312,43 @@ def main() -> None:
                         continue
                     name = fav_tag.find(attrs={"name": f"name_{i}"})
                     if name and isinstance(name, bs4.Tag):
-                        print(f'{i}: {name["value"]}')
+                        print(f"{i}: {name['value']}")
             else:
                 i = args.args[0]
                 name = soup.find(attrs={"name": f"name_{i}"})
                 if name and isinstance(name, bs4.Tag):
-                    print(f'Playing favorite {i}: {name["value"]}')
+                    print(f"Playing favorite {i}: {name['value']}")
                 else:
                     print(f"Favorite {i} does not exist")
         elif args.command == "info":
             content = soup.find(class_="content_content")
-            if content:
+            if isinstance(content, bs4.Tag):
                 for info_tag in content:
-                    if isinstance(info_tag, bs4.element.Comment) or (
-                        isinstance(info_tag, bs4.Tag)
-                        and (info_tag.name in ["div"] or not info_tag.string)
-                    ):
+                    if isinstance(info_tag, bs4.element.Comment):
                         continue
-                    string = (
-                        info_tag.string if info_tag.string else ""
-                    ).strip()
-                    if not len(string):
-                        continue
-                    if info_tag.name == "span":
-                        print(f" {string}", end="")
-                    elif info_tag.name in ["b"]:
-                        print(f"\n{string}")
+                    if isinstance(info_tag, bs4.Tag):
+                        if info_tag.name == "div" or not info_tag.string:
+                            continue
+                        tag_name = info_tag.name
+                        string = str(info_tag.string).strip()
+                        previous = info_tag.previous_sibling
                     else:
-                        if (
-                            isinstance(info_tag.previous_sibling, bs4.Tag)
-                            and info_tag.previous_sibling.name == "span"
-                        ):
-                            print(f" {string}")
-                        else:
-                            print(f"{string}")
+                        tag_name = ""
+                        string = str(info_tag).strip()
+                        previous = info_tag.previous_sibling
+                    if not string:
+                        continue
+                    if tag_name == "span":
+                        print(f" {string}", end="")
+                    elif tag_name == "b":
+                        print(f"\n{string}")
+                    elif (
+                        isinstance(previous, bs4.Tag)
+                        and previous.name == "span"
+                    ):
+                        print(f" {string}")
+                    else:
+                        print(f"{string}")
         elif args.command == "log":
             if soup.textarea:
                 print(
@@ -363,7 +375,7 @@ def main() -> None:
         # just raise error if status_code != 200
         r.raise_for_status()
     except httpx.ConnectError as e:
-        raise SystemExit(e)
+        raise SystemExit(e) from e
     except KeyboardInterrupt:
         pass
 

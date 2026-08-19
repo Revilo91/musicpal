@@ -3,38 +3,28 @@
 from __future__ import annotations
 
 import logging
-import socket
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Any, Callable, Optional
+from typing import Any
 
-import httpx
-import voluptuous as vol
 from aiohttp import web as aiohttp_web
-
+from homeassistant.components.network import async_get_source_ip
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_PASSWORD,
-    CONF_USERNAME,
-    Platform,
-)
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
+from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL, Platform
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.update_coordinator import (
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import (
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    SCAN_INTERVAL,
     UPNP_NOTIFY_PATH,
     UPNP_RENEWAL_INTERVAL,
 )
-from .musicpal_api import MusicPalClient
+from .coordinator import MusicPalDataUpdateCoordinator
 from .upnp_events import (
     AVT_SERVICE_TYPE,
+    RC_SERVICE_TYPE,
     discover_upnp_services,
     parse_upnp_notify_body,
     upnp_subscribe,
@@ -45,294 +35,205 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.SENSOR]
 
-SERVICE_SHOW_MESSAGE = "show_message"
-SERVICE_SHOW_CLOCK = "show_clock"
-SERVICE_REBOOT = "reboot"
+MusicPalConfigEntry = ConfigEntry[MusicPalDataUpdateCoordinator]
 
-SERVICE_SHOW_MESSAGE_SCHEMA = vol.Schema(
-    {
-        vol.Required("entity_id"): cv.entity_id,
-        vol.Required("message"): cv.string,
-    }
-)
+# hass.data[DOMAIN] key holding the shared "SID -> callback" dispatch table
+# for the single, globally registered UPnP NOTIFY route.
+_UPNP_CALLBACKS = "upnp_callbacks"
 
-SERVICE_SCHEMA = vol.Schema(
-    {
-        vol.Required("entity_id"): cv.entity_id,
-    }
-)
+NotifyCallback = Callable[[dict[str, str]], None]
+CallbackTable = dict[str, NotifyCallback]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+# =============================================================================
+# Setup / teardown
+# =============================================================================
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: MusicPalConfigEntry
+) -> bool:
     """Set up MusicPal from a config entry."""
-
-    def _make_client() -> MusicPalClient:
-        """Create a fresh MusicPalClient from config entry data."""
-        return MusicPalClient(
-            hostname=entry.data[CONF_HOST],
-            username=entry.data.get(CONF_USERNAME, "admin"),
-            password=entry.data.get(CONF_PASSWORD, "admin"),
-        )
-
-    async def async_update_data() -> dict[str, Any]:
-        """Fetch data from API."""
-        try:
-            async with _make_client() as api:
-                state = await api.get_state()
-                volume = await api.get_volume()
-                favorites = await api.get_favorites()
-                uptime = await api.get_uptime()
-                now_playing = await api.get_now_playing()
-
-                return {
-                    "state": state,
-                    "volume": volume,
-                    "favorites": favorites,
-                    "uptime": uptime,
-                    "now_playing": now_playing,
-                }
-        except httpx.TimeoutException as err:
-            raise UpdateFailed(
-                f"Timeout communicating with device: {err}"
-            ) from err
-        except httpx.HTTPError as err:
-            raise UpdateFailed(
-                f"Error communicating with device: {err}"
-            ) from err
-
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=DOMAIN,
-        update_method=async_update_data,
-        update_interval=timedelta(seconds=SCAN_INTERVAL),
-    )
-
-    # Fetch initial data
+    scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    coordinator = MusicPalDataUpdateCoordinator(hass, entry, scan_interval)
     await coordinator.async_config_entry_first_refresh()
 
-    # Shared UPnP state updated by NOTIFY callbacks and read by entities.
-    upnp_state: dict[str, Optional[str]] = {
-        "transport_state": None,
-        "avt_uri": None,
-    }
-
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-        "make_client": _make_client,
-        "upnp_state": upnp_state,
-        # Populated by _setup_upnp if subscription succeeds:
-        "upnp_avt_sid": None,
-        "upnp_avt_event_url": None,
-        "upnp_cancel_renewal": None,
-    }
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    async def async_show_message_service(call: ServiceCall) -> None:
-        """Handle show_message service call."""
-        message = call.data.get("message")
-        async with _make_client() as api:
-            await api.show_message(message)
-        await coordinator.async_request_refresh()
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    async def async_show_clock_service(call: ServiceCall) -> None:
-        """Handle show_clock service call."""
-        async with _make_client() as api:
-            await api.show_clock()
-        await coordinator.async_request_refresh()
-
-    async def async_reboot_service(call: ServiceCall) -> None:
-        """Handle reboot service call."""
-        async with _make_client() as api:
-            await api.reboot()
-
-    # Register services
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SHOW_MESSAGE,
-        async_show_message_service,
-        schema=SERVICE_SHOW_MESSAGE_SCHEMA,
+    # Probing for UPnP can take several seconds on devices that do not speak
+    # it at all, so never let it delay setup.  Polling works regardless.
+    entry.async_create_background_task(
+        hass,
+        _async_setup_upnp(hass, entry, coordinator),
+        name=f"{DOMAIN}-upnp-setup-{entry.entry_id}",
     )
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SHOW_CLOCK,
-        async_show_clock_service,
-        schema=SERVICE_SCHEMA,
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_REBOOT,
-        async_reboot_service,
-        schema=SERVICE_SCHEMA,
-    )
-
-    # Try to set up real-time UPnP event subscription (best-effort).
-    await _setup_upnp(hass, entry, coordinator, upnp_state)
 
     return True
 
 
-def _get_local_ip_for(target: str) -> Optional[str]:
-    """Return the local IP address that would be used to reach *target*."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect((target, 80))
-            ip: str = sock.getsockname()[0]
-            return ip
-    except OSError:
-        return None
+async def async_unload_entry(
+    hass: HomeAssistant, entry: MusicPalConfigEntry
+) -> bool:
+    """Unload a config entry."""
+    # Registered UPnP cleanup runs through entry.async_on_unload().
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _setup_upnp(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    coordinator: Any,
-    upnp_state: dict[str, Optional[str]],
+async def async_reload_entry(
+    hass: HomeAssistant, entry: MusicPalConfigEntry
 ) -> None:
-    """Attempt to subscribe to UPnP AVTransport events on the device.
+    """Reload the config entry when its options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
-    Registers a global aiohttp NOTIFY route (once per HA instance) and
-    sends a UPnP SUBSCRIBE request.  All failures are handled
-    gracefully; the integration falls back to polling when UPnP is
-    unavailable.
+
+# =============================================================================
+# UPnP eventing (best effort — the integration falls back to polling)
+# =============================================================================
+
+
+@callback
+def _async_register_notify_route(hass: HomeAssistant) -> CallbackTable:
+    """Register the shared UPnP NOTIFY route once per Home Assistant run.
+
+    Returns the ``SID -> callback`` dispatch table used by the route.
+    """
+    domain_data: dict[str, Any] = hass.data.setdefault(DOMAIN, {})
+    existing: CallbackTable | None = domain_data.get(_UPNP_CALLBACKS)
+    if existing is not None:
+        return existing
+
+    callbacks: CallbackTable = {}
+    domain_data[_UPNP_CALLBACKS] = callbacks
+
+    async def _handle_notify(
+        request: aiohttp_web.Request,
+    ) -> aiohttp_web.Response:
+        """Dispatch an incoming UPnP NOTIFY request to its subscriber."""
+        cb = callbacks.get(request.headers.get("SID", ""))
+        if cb is not None and (
+            state_vars := parse_upnp_notify_body(await request.read())
+        ):
+            cb(state_vars)
+        return aiohttp_web.Response(status=200)
+
+    hass.http.app.router.add_route("NOTIFY", UPNP_NOTIFY_PATH, _handle_notify)
+    _LOGGER.debug("Registered UPnP NOTIFY route at %s", UPNP_NOTIFY_PATH)
+    return callbacks
+
+
+async def _async_setup_upnp(
+    hass: HomeAssistant,
+    entry: MusicPalConfigEntry,
+    coordinator: MusicPalDataUpdateCoordinator,
+) -> None:
+    """Subscribe to UPnP AVTransport/RenderingControl events on the device.
+
+    Every failure mode is handled gracefully: when UPnP is unavailable the
+    integration simply keeps polling.
     """
     host: str = entry.data[CONF_HOST]
-    entry_id: str = entry.entry_id
+    client = get_async_client(hass)
 
-    # Register the NOTIFY route on the aiohttp server (once globally).
-    domain_data = hass.data[DOMAIN]
-    if "upnp_sid_callbacks" not in domain_data:
-        sid_callbacks: dict[str, Callable[[dict[str, str]], None]] = {}
-        domain_data["upnp_sid_callbacks"] = sid_callbacks
-
-        async def _handle_notify(
-            request: aiohttp_web.Request,
-        ) -> aiohttp_web.Response:
-            """Dispatch an incoming UPnP NOTIFY request."""
-            sid = request.headers.get("SID", "")
-            cb = sid_callbacks.get(sid)
-            if cb is not None:
-                body = await request.read()
-                state_vars = parse_upnp_notify_body(body)
-                if state_vars:
-                    cb(state_vars)
-            return aiohttp_web.Response(status=200)
-
-        try:
-            hass.http.app.router.add_route(
-                "NOTIFY", UPNP_NOTIFY_PATH, _handle_notify
-            )
-            _LOGGER.debug(
-                "Registered UPnP NOTIFY route at %s", UPNP_NOTIFY_PATH
-            )
-        except RuntimeError as err:
-            _LOGGER.debug(
-                "Could not register UPnP NOTIFY route: %s — "
-                "real-time UPnP events disabled",
-                err,
-            )
-            return
-    else:
-        sid_callbacks = domain_data["upnp_sid_callbacks"]
-
-    # Discover the device's UPnP service event URLs.
-    services = await discover_upnp_services(host)
-    if not services or AVT_SERVICE_TYPE not in services:
+    try:
+        callbacks = _async_register_notify_route(hass)
+    except (RuntimeError, ValueError) as err:
         _LOGGER.debug(
-            "UPnP AVTransport service not found for %s — using polling only",
-            host,
+            "Could not register UPnP NOTIFY route (%s) — polling only", err
         )
         return
 
-    avt_event_url: str = services[AVT_SERVICE_TYPE]
+    services = await discover_upnp_services(client, host)
+    if not services:
+        _LOGGER.debug("No UPnP services on %s — polling only", host)
+        return
 
-    # Build the callback URL pointing to HA's NOTIFY endpoint.
-    local_ip = _get_local_ip_for(host)
+    local_ip = await async_get_source_ip(hass, host)
     if not local_ip:
-        _LOGGER.debug("Could not determine local IP for UPnP callback")
+        _LOGGER.debug("Could not determine local IP for the UPnP callback")
         return
-    ha_port = getattr(hass.http, "server_port", 8123)
-    callback_url = f"http://{local_ip}:{ha_port}{UPNP_NOTIFY_PATH}"
+    port = getattr(hass.http, "server_port", 8123)
+    callback_url = f"http://{local_ip}:{port}{UPNP_NOTIFY_PATH}"
 
-    # Subscribe to AVTransport events.
-    sid = await upnp_subscribe(avt_event_url, callback_url)
-    if not sid:
-        _LOGGER.debug("UPnP SUBSCRIBE to %s failed", avt_event_url)
-        return
-
-    entry_data = hass.data[DOMAIN][entry_id]
-    entry_data["upnp_avt_sid"] = sid
-    entry_data["upnp_avt_event_url"] = avt_event_url
-
-    def _on_avt_notify(state_vars: dict[str, str]) -> None:
-        """Handle an AVTransport NOTIFY event from the device."""
+    @callback
+    def _on_notify(state_vars: dict[str, str]) -> None:
+        """Apply a NOTIFY payload to the shared UPnP state."""
+        upnp = coordinator.upnp
         changed = False
-        transport_state = state_vars.get("TransportState")
-        if transport_state is not None:
-            upnp_state["transport_state"] = transport_state
+
+        if (value := state_vars.get("TransportState")) is not None:
+            upnp.transport_state = value
             changed = True
-        avt_uri = state_vars.get("AVTransportURI")
-        if avt_uri is not None:
-            upnp_state["avt_uri"] = avt_uri
+        if (value := state_vars.get("AVTransportURI")) is not None:
+            upnp.avt_uri = value or None
             changed = True
+        if (value := state_vars.get("CurrentTrackTitle")) is not None:
+            upnp.track_title = value or None
+            changed = True
+        if (value := state_vars.get("Volume")) is not None:
+            try:
+                upnp.volume = int(value)
+                changed = True
+            except ValueError:
+                pass
+        if (value := state_vars.get("Mute")) is not None:
+            upnp.muted = value in ("1", "true", "True")
+            changed = True
+
         if changed:
+            # Push the new state to the UI right away, then let the debounced
+            # refresh reconcile the polled fields (now playing text, volume).
+            coordinator.async_update_listeners()
             hass.async_create_task(coordinator.async_request_refresh())
 
-    sid_callbacks[sid] = _on_avt_notify
+    subscriptions: list[tuple[str, str]] = []
 
-    # Schedule periodic subscription renewal before it expires.
-    async def _renew_subscription(now: Any) -> None:
-        current_sid: Optional[str] = entry_data.get("upnp_avt_sid")
-        if not current_sid:
-            return
-        new_sid = await upnp_subscribe(
-            avt_event_url, callback_url, sid=current_sid
+    for service_type in (AVT_SERVICE_TYPE, RC_SERVICE_TYPE):
+        event_url = services.get(service_type)
+        if not event_url:
+            continue
+        sid = await upnp_subscribe(client, event_url, callback_url)
+        if not sid:
+            continue
+        callbacks[sid] = _on_notify
+        subscriptions.append((sid, event_url))
+        _LOGGER.debug(
+            "Subscribed to %s on %s (SID: %s)", service_type, host, sid
         )
-        if new_sid and new_sid != current_sid:
-            # Device issued a new SID on renewal.
-            sid_callbacks.pop(current_sid, None)
-            sid_callbacks[new_sid] = _on_avt_notify
-            entry_data["upnp_avt_sid"] = new_sid
 
-    cancel_renewal = async_track_time_interval(
-        hass,
-        _renew_subscription,
-        timedelta(seconds=UPNP_RENEWAL_INTERVAL),
+    if not subscriptions:
+        _LOGGER.debug("No UPnP subscriptions established for %s", host)
+        return
+
+    async def _renew(_now: Any) -> None:
+        """Renew every subscription before it expires."""
+        for index, (sid, event_url) in enumerate(list(subscriptions)):
+            new_sid = await upnp_subscribe(
+                client, event_url, callback_url, sid=sid
+            )
+            if new_sid is None:
+                # Renewal failed — try establishing a fresh subscription.
+                new_sid = await upnp_subscribe(client, event_url, callback_url)
+            if new_sid is None:
+                _LOGGER.debug("Lost UPnP subscription to %s", event_url)
+                continue
+            if new_sid != sid:
+                callbacks.pop(sid, None)
+                callbacks[new_sid] = _on_notify
+                subscriptions[index] = (new_sid, event_url)
+
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass, _renew, timedelta(seconds=UPNP_RENEWAL_INTERVAL)
+        )
     )
-    entry_data["upnp_cancel_renewal"] = cancel_renewal
 
-    _LOGGER.debug(
-        "Subscribed to UPnP AVTransport events on %s (SID: %s)",
-        host,
-        sid,
-    )
+    async def _unsubscribe_all() -> None:
+        for sid, event_url in subscriptions:
+            callbacks.pop(sid, None)
+            await upnp_unsubscribe(client, event_url, sid)
 
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
-
-    # Cancel subscription renewal timer.
-    cancel_renewal = entry_data.get("upnp_cancel_renewal")
-    if cancel_renewal is not None:
-        cancel_renewal()
-
-    # Unsubscribe from UPnP events.
-    sid: Optional[str] = entry_data.get("upnp_avt_sid")
-    event_url: Optional[str] = entry_data.get("upnp_avt_event_url")
-    if sid and event_url:
-        await upnp_unsubscribe(event_url, sid)
-        domain_data = hass.data.get(DOMAIN, {})
-        sid_callbacks = domain_data.get("upnp_sid_callbacks", {})
-        sid_callbacks.pop(sid, None)
-
-    if unload_ok := await hass.config_entries.async_unload_platforms(
-        entry, PLATFORMS
-    ):
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
+    entry.async_on_unload(_unsubscribe_all)

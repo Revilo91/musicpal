@@ -22,16 +22,21 @@ musicpal/
 ├── HACS_README.md                    # Home Assistant integration guide
 ├── INSTALLATION_DE.md                # German installation guide
 ├── info.md                           # Short integration description
+├── tests/                            # pytest suite (pytest-homeassistant-custom-component)
 └── custom_components/musicpal/
-    ├── __init__.py                   # HA entry point, coordinator, services
-    ├── config_flow.py                # UI configuration flow
+    ├── __init__.py                   # HA entry point, UPnP eventing, unload
+    ├── config_flow.py                # UI config, reauth, reconfigure, options
     ├── const.py                      # Constants (domain, keys, intervals)
-    ├── media_player.py               # MediaPlayer entity
-    ├── sensor.py                     # Sensor entities (display, uptime, favorites)
-    ├── musicpal_api.py               # Async httpx API client
+    ├── coordinator.py                # DataUpdateCoordinator + polled data model
+    ├── entity.py                      # Base entity providing device_info
+    ├── media_player.py               # MediaPlayer entity + entity services
+    ├── sensor.py                     # Diagnostic sensors (display, boot, favorites)
+    ├── musicpal_api.py               # Async httpx API client + exceptions
+    ├── upnp_events.py                # UPnP SUBSCRIBE / NOTIFY helpers
+    ├── diagnostics.py                # Config entry diagnostics
     ├── manifest.json                 # HA integration metadata
     ├── services.yaml                 # Custom service definitions
-    ├── strings.json                  # UI strings / translations
+    ├── strings.json                  # UI strings (source for translations/en.json)
     └── translations/
         ├── de.json                   # German
         └── en.json                   # English
@@ -41,14 +46,15 @@ musicpal/
 
 | Area | Technology |
 |------|-----------|
-| Language | Python 3.8+ |
+| Language | Python 3.12+ (HA), 3.9+ (CLI) |
 | HTTP client | `httpx` (async for HA, sync for CLI) |
 | HTML parsing | `beautifulsoup4` + `lxml` |
-| HA framework | Home Assistant 2024.7.0+ |
+| HA framework | Home Assistant 2024.12.0+ |
 | Packaging | `setuptools` + `setuptools_scm` |
-| Formatting | `black` (line length 80, target py38) |
+| Formatting | `ruff format` (line length 80) |
 | Type checking | `mypy --strict` |
-| Linting | `pylint` (unused-import checks only) |
+| Linting | `ruff check` (E, W, F, I, B, UP, SIM, C4, D) |
+| Tests | `pytest` + `pytest-homeassistant-custom-component` |
 
 ## Device API
 
@@ -64,21 +70,36 @@ Default credentials: `admin` / `admin`.
 
 ## Key Conventions
 
-- **Async HTTP**: The HA integration uses `httpx.AsyncClient` with the async context manager pattern (see `musicpal_api.py`).
-- **Coordinator pattern**: `DataUpdateCoordinator` from HA is used for polling (`__init__.py`).
+- **Async HTTP**: The HA integration reuses Home Assistant's shared
+  `httpx.AsyncClient` via `get_async_client(hass)`; `MusicPalClient` also
+  supports the standalone `async with` pattern (see `musicpal_api.py`).
+- **Coordinator pattern**: `MusicPalDataUpdateCoordinator` in `coordinator.py`
+  polls the device and is stored on `entry.runtime_data` (not `hass.data`).
+  Rarely changing data (favorites, uptime, info) is only refreshed every
+  `SLOW_UPDATE_CYCLES` polls.
+- **Errors**: `musicpal_api.py` raises `MusicPalError` /
+  `MusicPalConnectionError` / `MusicPalAuthError`. Entity methods translate
+  these into `HomeAssistantError`; the coordinator turns auth failures into
+  `ConfigEntryAuthFailed` to trigger the reauth flow.
 - **Code sections** are separated by equal-sign comment dividers (`# ===…`).
 - **Type annotations**: All code uses strict mypy typing; annotate every function and variable.
-- **No test suite** currently exists. Quality is enforced via pre-commit hooks.
+- **Tests** live in `tests/` and use `pytest-homeassistant-custom-component`
+  with a fully mocked device (no hardware needed).
 - The CLI script is named `musicpal` (no `.py` extension) and is treated as a module by mypy (`--scripts-are-modules`).
 
 ## Custom HA Services
 
+All three are **entity services** registered on the `media_player` platform,
+so they are targeted with `target:` (or a plain `entity_id:`).
+
 | Service | Description |
 |---------|-------------|
 | `musicpal.show_message` | Display a custom message on the device screen |
-| `musicpal.show_list` | Display a list on the device screen |
-| `musicpal.play_url` | Play a media URL directly |
-| `musicpal.select_favorite` | Select a favorite by index |
+| `musicpal.show_clock` | Show the clock screen |
+| `musicpal.reboot` | Reboot the device |
+
+Playing a URL and selecting a favorite are covered by the standard
+`media_player.play_media` and `media_player.select_source` services.
 
 ## Development Commands
 
@@ -89,21 +110,30 @@ pip install -e ".[dev]"
 # Run pre-commit hooks manually
 pre-commit run --all-files
 
-# Format with black
-black musicpal custom_components/
-
-# Type-check
-mypy --strict --scripts-are-modules --disable-error-code=import-untyped musicpal custom_components/
+# Format
+ruff format musicpal custom_components/ tests/
 
 # Lint
-pylint --disable=all --enable=unused-import musicpal custom_components/
+ruff check musicpal custom_components/ tests/
+
+# Type-check (config lives in pyproject.toml)
+mypy --scripts-are-modules musicpal custom_components/
+
+# Tests
+pytest tests/
 ```
 
 ## Important Notes for Claude
 
-- When adding new features to the HA integration, follow the existing `DataUpdateCoordinator` and entity patterns in `__init__.py`, `media_player.py`, and `sensor.py`.
-- Always use `httpx.AsyncClient` (not `requests`) for HTTP calls in the HA integration.
-- Keep code compliant with `black` (80-char lines) and fully typed for `mypy --strict`.
-- New HA services must be declared in both `services.yaml` and registered in `__init__.py`.
+- When adding new entities, subclass `MusicPalEntity` (`entity.py`) so they
+  land on the shared device and get `has_entity_name` handling for free.
+- Always use `httpx` (not `requests`) for HTTP calls in the HA integration.
+- Keep code compliant with `ruff format` (80-char lines) and fully typed for
+  `mypy --strict`.
+- New entity services must be declared in `services.yaml`, described in
+  `strings.json` plus both translation files, and registered via
+  `platform.async_register_entity_service` in `media_player.py`.
+- `strings.json` is the English source of truth; `translations/en.json` must
+  stay identical to it.
 - Translations belong in `translations/de.json` and `translations/en.json`; update both when adding new UI strings.
 - The project targets Python 3.8+; avoid syntax or library features unavailable in that version.

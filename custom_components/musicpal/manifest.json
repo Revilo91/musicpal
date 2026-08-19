@@ -1,13 +1,25 @@
 {
-    "domain": "musicpal",
-    "name": "MusicPal",
-    "version": "1.0.0",
-    "documentation": "https://github.com/Revilo91/musicpal",
-    "issue_tracker": "https://github.com/Revilo91/musicpal/issues",
-    "codeowners": ["@Revilo91"],
-    "requirements": ["beautifulsoup4", "lxml", "httpx"],
-    "dependencies": [],
-    "config_flow": true,
-    "integration_type": "device",
-    "iot_class": "local_polling"
+  "domain": "musicpal",
+  "name": "MusicPal",
+  "codeowners": [
+    "@Revilo91"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "media_source",
+    "network"
+  ],
+  "documentation": "https://github.com/Revilo91/musicpal",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Revilo91/musicpal/issues",
+  "loggers": [
+    "musicpal"
+  ],
+  "requirements": [
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.3.0"
+  ],
+  "version": "1.1.0"
 }

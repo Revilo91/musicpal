@@ -50,6 +50,13 @@ The Freecom MusicPal is an early hardware media player / internet radio that was
    - **Password**: Default is "admin"
 5. Click "Submit"
 
+### Options
+
+Press **Configure** on the integration card to change how often the device is
+polled (5-300 seconds, default 30). The MusicPal is 2007 hardware, so lower
+values make Home Assistant react faster at the cost of more load on the
+device.
+
 ## Usage
 
 ### Media Player
@@ -66,9 +73,13 @@ The integration creates a media player entity for your MusicPal device with the 
 
 Three sensor entities are created:
 
-1. **MusicPal Display**: Shows the current display content
-2. **MusicPal Uptime**: Shows how long the device has been running
-3. **MusicPal Favorites Count**: Shows the number of favorites configured
+1. **Display**: The text currently shown on the device screen
+2. **Last boot**: When the device last started (a stable timestamp rather than
+   an ever-increasing counter, so it does not fill up your recorder database)
+3. **Favorites**: How many favorites are configured; the names are available as
+   the `favorites` attribute
+
+All three are marked as diagnostic entities.
 
 ### Services
 
@@ -77,9 +88,10 @@ Three sensor entities are created:
 Display a custom message on the MusicPal screen.
 
 ```yaml
-service: musicpal.show_message
-data:
+action: musicpal.show_message
+target:
   entity_id: media_player.musicpal
+data:
   message: "Hello from Home Assistant!"
 ```
 
@@ -88,8 +100,8 @@ data:
 Display the clock on the MusicPal screen.
 
 ```yaml
-service: musicpal.show_clock
-data:
+action: musicpal.show_clock
+target:
   entity_id: media_player.musicpal
 ```
 
@@ -98,8 +110,8 @@ data:
 Reboot the MusicPal device.
 
 ```yaml
-service: musicpal.reboot
-data:
+action: musicpal.reboot
+target:
   entity_id: media_player.musicpal
 ```
 
@@ -114,7 +126,7 @@ automation:
       - platform: time
         at: "07:00:00"
     action:
-      - service: media_player.select_source
+      - action: media_player.select_source
         target:
           entity_id: media_player.musicpal
         data:
@@ -131,9 +143,10 @@ automation:
         entity_id: binary_sensor.doorbell
         to: "on"
     action:
-      - service: musicpal.show_message
-        data:
+      - action: musicpal.show_message
+        target:
           entity_id: media_player.musicpal
+        data:
           message: "Someone at the door!"
 ```
 
@@ -150,8 +163,7 @@ The integration supports all major MusicPal API commands:
 
 ## Requirements
 
-- Home Assistant 2024.7.0 or newer
-- Python 3.8 or newer
+- Home Assistant 2024.12.0 or newer
 - A Freecom MusicPal device on your network
 
 ## Troubleshooting

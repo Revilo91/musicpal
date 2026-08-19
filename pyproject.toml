@@ -1,16 +1,66 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=3.4"]
+requires = ["setuptools>=64", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"
 
-[tool.black]
+[tool.ruff]
 line-length = 80
-target-version = ['py38']
-include = '''
-(
-  \.pyi?$
-  | musicpal
-)
-'''
+target-version = "py312"
+# The CLI entry point has no .py extension.
+include = ["*.py", "*.pyi", "musicpal", "**/pyproject.toml"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "D",    # pydocstyle
+]
+ignore = [
+    "D203",  # conflicts with D211
+    "D213",  # conflicts with D212
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+# The CLI keeps Python 3.9 compatible syntax and its own docstring style.
+"musicpal" = ["D", "UP006", "UP007", "UP045"]
+# Fixture data mirrors real device markup; keep it verbatim.
+"tests/const.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# The CLI script and the integration package are both called "musicpal".
+# Explicit package bases makes the latter resolve as
+# "custom_components.musicpal" so the two no longer collide.
+mypy_path = "."
+namespace_packages = true
+explicit_package_bases = true
+warn_unused_ignores = true
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = ["bs4.*", "lxml.*"]
+ignore_missing_imports = true
+
+# Home Assistant re-exports its public API through computed __all__ values
+# that mypy cannot resolve statically.
+[[tool.mypy.overrides]]
+module = ["homeassistant.*"]
+implicit_reexport = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q"

@@ -1,44 +1,23 @@
 show_message:
-  name: Show message
-  description: Display a message on the MusicPal screen
+  target:
+    entity:
+      integration: musicpal
+      domain: media_player
   fields:
-    entity_id:
-      name: Entity
-      description: The MusicPal entity to send the message to
-      required: true
-      selector:
-        entity:
-          integration: musicpal
-          domain: media_player
     message:
-      name: Message
-      description: The message to display
       required: true
+      example: "Dinner is ready"
       selector:
         text:
 
 show_clock:
-  name: Show clock
-  description: Display the clock on the MusicPal screen
-  fields:
-    entity_id:
-      name: Entity
-      description: The MusicPal entity to show the clock on
-      required: true
-      selector:
-        entity:
-          integration: musicpal
-          domain: media_player
+  target:
+    entity:
+      integration: musicpal
+      domain: media_player
 
 reboot:
-  name: Reboot
-  description: Reboot the MusicPal device
-  fields:
-    entity_id:
-      name: Entity
-      description: The MusicPal entity to reboot
-      required: true
-      selector:
-        entity:
-          integration: musicpal
-          domain: media_player
+  target:
+    entity:
+      integration: musicpal
+      domain: media_player

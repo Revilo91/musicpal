@@ -24,13 +24,27 @@ _Nashville_ which, unfortunately, is closed source.
 This repository now includes a full Home Assistant custom integration! Install via HACS to control your MusicPal device directly from Home Assistant.
 
 **Features:**
-- Media player entity with full playback control
-- Sensor entities for device state, uptime, and favorites
+- Media player entity with playback, volume, power and favorite selection
+- Media browsing, so Home Assistant media sources can be played on the device
+- Diagnostic sensors for the display, last boot time and favorites
 - Services for display messages and device management
-- UI-based configuration flow
+- UI-based configuration flow, including reauth, reconfigure and a
+  configurable polling interval
+- Optional real-time updates via UPnP eventing, falling back to polling
 
 **Installation:**
 See [HACS_README.md](HACS_README.md) for detailed installation instructions, or [INSTALLATION_DE.md](INSTALLATION_DE.md) for German instructions.
+
+### Development
+
+```bash
+pip install -e ".[dev]"   # tooling and test dependencies
+pre-commit run --all-files
+pytest tests/
+```
+
+The integration is checked in CI with `hassfest`, the HACS action, `ruff`,
+`mypy --strict` and the test suite in [`tests/`](tests).
 
 ### Command Line Usage
 

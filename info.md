@@ -5,16 +5,16 @@ Control your Freecom MusicPal internet radio from Home Assistant!
 ## Features
 
 ### Media Player
-- Power on/off control
+- Power on/off control (the MusicPal shows its clock screen while in standby)
 - Play/pause and next track
 - Volume control (0-100%)
 - Select favorites as sources
 - Play media URLs
 
-### Sensors
-- **Display Content**: Shows what's currently on the MusicPal screen
-- **Uptime**: Device uptime tracking
-- **Favorites Count**: Number of configured favorites
+### Sensors (diagnostic)
+- **Display**: Shows what's currently on the MusicPal screen
+- **Last boot**: Timestamp of the device's last start
+- **Favorites**: Number of configured favorites, with their names as an attribute
 
 ### Services
 - `musicpal.show_message`: Display custom messages
@@ -27,6 +27,7 @@ Control your Freecom MusicPal internet radio from Home Assistant!
 2. Add the integration from Settings → Devices & Services
 3. Enter your device's IP address
 4. Use default credentials (admin/admin) or your custom ones
+5. Optionally adjust the polling interval under the integration's **Configure** button
 
 ## Example Usage
 
@@ -38,7 +39,7 @@ automation:
       platform: time
       at: "07:00:00"
     action:
-      - service: media_player.select_source
+      - action: media_player.select_source
         target:
           entity_id: media_player.musicpal
         data:
@@ -54,15 +55,16 @@ automation:
       entity_id: binary_sensor.doorbell
       to: "on"
     action:
-      - service: musicpal.show_message
-        data:
+      - action: musicpal.show_message
+        target:
           entity_id: media_player.musicpal
+        data:
           message: "Someone is at the door!"
 ```
 
 ## Requirements
 
-- Home Assistant 2024.7.0 or newer
+- Home Assistant 2024.12.0 or newer
 - Freecom MusicPal device
 - Network connectivity to the device
 

@@ -38,7 +38,14 @@ uv pip install --upgrade pip --python "$VENV_DIR/bin/python"
 uv pip install -e "$WORKSPACE_ROOT" \
   --config-settings editable_mode=compat \
   --python "$VENV_DIR/bin/python"
-uv pip install "homeassistant>=2024.7.0" \
+uv pip install "homeassistant>=2024.12.0" \
+  --python "$VENV_DIR/bin/python"
+
+# Test and lint tooling (pytest-homeassistant-custom-component pins the
+# Home Assistant version it was built against).
+uv pip install --prerelease=allow \
+  pytest pytest-homeassistant-custom-component ruff mypy \
+  types-beautifulsoup4 \
   --python "$VENV_DIR/bin/python"
 
 # === Home Assistant config ===

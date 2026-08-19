@@ -1,41 +1,94 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Set up MusicPal",
-                "description": "Configure your Freecom MusicPal device",
-                "data": {
-                    "host": "Hostname or IP address",
-                    "username": "Username",
-                    "password": "Password",
-                },
-            }
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up MusicPal",
+        "description": "Configure your Freecom MusicPal device.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
         },
-        "error": {
-            "cannot_connect": "Failed to connect to the device",
-            "invalid_auth": "Invalid authentication credentials",
-            "unknown": "Unexpected error occurred",
-        },
-        "abort": {"already_configured": "Device is already configured"},
+        "data_description": {
+          "host": "Hostname or IP address of the MusicPal on your network.",
+          "username": "Username for the device web interface (default: admin).",
+          "password": "Password for the device web interface (default: admin)."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure MusicPal",
+        "description": "Update the connection details of your MusicPal device.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate MusicPal",
+        "description": "The MusicPal at {host} rejected the stored credentials. Enter the current username and password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
     },
-    "services": {
-        "show_message": {
-            "name": "Show message",
-            "description": "Display a message on the MusicPal screen",
-            "fields": {
-                "message": {
-                    "name": "Message",
-                    "description": "The message to display",
-                }
-            },
-        },
-        "show_clock": {
-            "name": "Show clock",
-            "description": "Display the clock on the MusicPal screen",
-        },
-        "reboot": {
-            "name": "Reboot",
-            "description": "Reboot the MusicPal device",
-        },
+    "error": {
+      "cannot_connect": "Failed to connect to the device",
+      "invalid_auth": "Invalid authentication credentials",
+      "unknown": "Unexpected error occurred"
     },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Reconfiguration was successful",
+      "wrong_device": "The entered host belongs to a different MusicPal device"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MusicPal options",
+        "data": {
+          "scan_interval": "Polling interval"
+        },
+        "data_description": {
+          "scan_interval": "How often to poll the device, in seconds. Lower values react faster but put more load on the device."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_boot": {
+        "name": "Last boot"
+      },
+      "display": {
+        "name": "Display"
+      },
+      "favorites_count": {
+        "name": "Favorites"
+      }
+    }
+  },
+  "services": {
+    "show_message": {
+      "name": "Show message",
+      "description": "Displays a message on the MusicPal screen.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "The message to display."
+        }
+      }
+    },
+    "show_clock": {
+      "name": "Show clock",
+      "description": "Displays the clock on the MusicPal screen."
+    },
+    "reboot": {
+      "name": "Reboot",
+      "description": "Reboots the MusicPal device."
+    }
+  }
 }

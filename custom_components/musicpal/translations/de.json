@@ -1,41 +1,94 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "MusicPal einrichten",
-                "description": "Konfigurieren Sie Ihr Freecom MusicPal-Gerät",
-                "data": {
-                    "host": "Hostname oder IP-Adresse",
-                    "username": "Benutzername",
-                    "password": "Passwort"
-                }
-            }
+  "config": {
+    "step": {
+      "user": {
+        "title": "MusicPal einrichten",
+        "description": "Konfiguriere dein Freecom MusicPal-Gerät.",
+        "data": {
+          "host": "Host",
+          "username": "Benutzername",
+          "password": "Passwort"
         },
-        "error": {
-            "cannot_connect": "Verbindung zum Gerät fehlgeschlagen",
-            "invalid_auth": "Ungültige Anmeldedaten",
-            "unknown": "Unerwarteter Fehler aufgetreten"
-        },
-        "abort": {"already_configured": "Gerät ist bereits konfiguriert"}
-    },
-    "services": {
-        "show_message": {
-            "name": "Nachricht anzeigen",
-            "description": "Eine Nachricht auf dem MusicPal-Bildschirm anzeigen",
-            "fields": {
-                "message": {
-                    "name": "Nachricht",
-                    "description": "Die anzuzeigende Nachricht"
-                }
-            }
-        },
-        "show_clock": {
-            "name": "Uhr anzeigen",
-            "description": "Die Uhr auf dem MusicPal-Bildschirm anzeigen"
-        },
-        "reboot": {
-            "name": "Neustart",
-            "description": "Das MusicPal-Gerät neu starten"
+        "data_description": {
+          "host": "Hostname oder IP-Adresse des MusicPal in deinem Netzwerk.",
+          "username": "Benutzername für die Weboberfläche des Geräts (Standard: admin).",
+          "password": "Passwort für die Weboberfläche des Geräts (Standard: admin)."
         }
+      },
+      "reconfigure": {
+        "title": "MusicPal neu konfigurieren",
+        "description": "Aktualisiere die Verbindungsdaten deines MusicPal-Geräts.",
+        "data": {
+          "host": "Host",
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "reauth_confirm": {
+        "title": "MusicPal erneut authentifizieren",
+        "description": "Der MusicPal unter {host} hat die gespeicherten Anmeldedaten abgelehnt. Gib den aktuellen Benutzernamen und das Passwort ein.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Gerät fehlgeschlagen",
+      "invalid_auth": "Ungültige Anmeldedaten",
+      "unknown": "Unerwarteter Fehler aufgetreten"
+    },
+    "abort": {
+      "already_configured": "Gerät ist bereits konfiguriert",
+      "reauth_successful": "Erneute Authentifizierung war erfolgreich",
+      "reconfigure_successful": "Neukonfiguration war erfolgreich",
+      "wrong_device": "Der eingegebene Host gehört zu einem anderen MusicPal-Gerät"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MusicPal-Optionen",
+        "data": {
+          "scan_interval": "Abfrageintervall"
+        },
+        "data_description": {
+          "scan_interval": "Wie oft das Gerät abgefragt wird, in Sekunden. Niedrigere Werte reagieren schneller, belasten das Gerät aber stärker."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_boot": {
+        "name": "Letzter Start"
+      },
+      "display": {
+        "name": "Anzeige"
+      },
+      "favorites_count": {
+        "name": "Favoriten"
+      }
+    }
+  },
+  "services": {
+    "show_message": {
+      "name": "Nachricht anzeigen",
+      "description": "Zeigt eine Nachricht auf dem MusicPal-Bildschirm an.",
+      "fields": {
+        "message": {
+          "name": "Nachricht",
+          "description": "Die anzuzeigende Nachricht."
+        }
+      }
+    },
+    "show_clock": {
+      "name": "Uhr anzeigen",
+      "description": "Zeigt die Uhr auf dem MusicPal-Bildschirm an."
+    },
+    "reboot": {
+      "name": "Neustart",
+      "description": "Startet das MusicPal-Gerät neu."
+    }
+  }
 }

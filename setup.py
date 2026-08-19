@@ -2,7 +2,7 @@
 
 from setuptools import setup  # type: ignore
 
-with open("README.md", "r") as fh:
+with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
@@ -10,7 +10,9 @@ setup(
     author="Joerg Mechnich",
     author_email="joerg.mechnich@gmail.com",
     license="GNU GPLv3",
-    description="Command line interface for remote controlling a Freecom MusicPal",
+    description=(
+        "Command line interface for remote controlling a Freecom MusicPal"
+    ),
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jmechnich/musicpal",
@@ -18,10 +20,25 @@ setup(
     use_scm_version={"local_scheme": "no-local-version"},
     setup_requires=["setuptools_scm"],
     install_requires=["beautifulsoup4", "lxml", "httpx"],
+    extras_require={
+        "test": [
+            "pytest",
+            "pytest-homeassistant-custom-component",
+        ],
+        "dev": [
+            "mypy",
+            "pre-commit",
+            "pytest",
+            "pytest-homeassistant-custom-component",
+            "ruff",
+            "types-beautifulsoup4",
+        ],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: POSIX :: Linux",
     ],
-    python_requires=">=3.8",
+    # dict[str, ...] annotations are evaluated at import time in the CLI.
+    python_requires=">=3.9",
 )

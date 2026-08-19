@@ -1,51 +1,84 @@
-"""Support for MusicPal media player."""
+"""Support for the MusicPal media player."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import Any
 
-import httpx
-
+import voluptuous as vol
+from homeassistant.components import media_source
 from homeassistant.components.media_player import (
+    BrowseMedia,
+    MediaPlayerDeviceClass,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
+    MediaType,
+    async_process_play_media_url,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.entity_platform import (
+    AddEntitiesCallback,
+    async_get_current_platform,
+)
 
-from .const import ATTR_FAVORITES, ATTR_UPTIME, DOMAIN
-from .musicpal_api import MusicPalClient
+from . import MusicPalConfigEntry
+from .const import (
+    ATTR_FAVORITES,
+    ATTR_MESSAGE,
+    ATTR_UPTIME,
+    SERVICE_REBOOT,
+    SERVICE_SHOW_CLOCK,
+    SERVICE_SHOW_MESSAGE,
+    VOLUME_MAX,
+)
+from .coordinator import MusicPalDataUpdateCoordinator
+from .entity import MusicPalEntity
+from .musicpal_api import MusicPalError
 
 _LOGGER = logging.getLogger(__name__)
+
+# UPnP AVTransport states mapped onto Home Assistant media player states.
+_TRANSPORT_STATES: dict[str, MediaPlayerState] = {
+    "PLAYING": MediaPlayerState.PLAYING,
+    "PAUSED_PLAYBACK": MediaPlayerState.PAUSED,
+    "PAUSED_RECORDING": MediaPlayerState.PAUSED,
+    "TRANSITIONING": MediaPlayerState.BUFFERING,
+    "STOPPED": MediaPlayerState.IDLE,
+    "NO_MEDIA_PRESENT": MediaPlayerState.IDLE,
+}
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: MusicPalConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the MusicPal media player platform."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
-    make_client = hass.data[DOMAIN][config_entry.entry_id]["make_client"]
-    upnp_state = hass.data[DOMAIN][config_entry.entry_id]["upnp_state"]
+    async_add_entities([MusicPalMediaPlayer(config_entry.runtime_data)])
 
-    async_add_entities(
-        [
-            MusicPalMediaPlayer(
-                coordinator, make_client, config_entry, upnp_state
-            )
-        ]
+    # Entity services keep the target handling (entity_id / device_id / area)
+    # in Home Assistant's hands instead of reimplementing it per service.
+    platform = async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SHOW_MESSAGE,
+        {vol.Required(ATTR_MESSAGE): cv.string},
+        "async_show_message",
     )
+    platform.async_register_entity_service(
+        SERVICE_SHOW_CLOCK, None, "async_show_clock"
+    )
+    platform.async_register_entity_service(SERVICE_REBOOT, None, "async_reboot")
 
 
-class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
+class MusicPalMediaPlayer(MusicPalEntity, MediaPlayerEntity):
     """Representation of a MusicPal media player."""
 
+    _attr_name = None
+    _attr_device_class = MediaPlayerDeviceClass.RECEIVER
+    _attr_media_content_type = MediaType.MUSIC
     _attr_supported_features = (
         MediaPlayerEntityFeature.VOLUME_SET
         | MediaPlayerEntityFeature.VOLUME_STEP
@@ -56,265 +89,262 @@ class MusicPalMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.STOP
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.BROWSE_MEDIA
         | MediaPlayerEntityFeature.SELECT_SOURCE
     )
 
-    def __init__(
-        self,
-        coordinator: Any,
-        make_client: Callable[[], MusicPalClient],
-        config_entry: ConfigEntry,
-        upnp_state: dict[str, Optional[str]],
-    ) -> None:
+    def __init__(self, coordinator: MusicPalDataUpdateCoordinator) -> None:
         """Initialize the MusicPal media player."""
-        super().__init__(coordinator)
-        self._make_client = make_client
-        # _upnp_state is a dict shared with __init__.py's UPnP callback.
-        # Both the NOTIFY handler and all entity property reads execute on
-        # the single-threaded HA event loop, so no locking is needed.
-        self._upnp_state = upnp_state
-        self._attr_name = "MusicPal"
-        self._attr_unique_id = f"{config_entry.data[CONF_HOST]}_media_player"
-        self._media_title: Optional[str] = None
+        super().__init__(coordinator, "media_player")
+        self._selected_source: str | None = None
+
+    # --- state ------------------------------------------------------------
 
     @property
     def state(self) -> MediaPlayerState:
         """Return the state of the device.
 
-        UPnP AVTransport state (when available) takes precedence over
-        the heuristic based on the device's display text.
+        Precedence: real-time UPnP AVTransport state, then the explicit
+        playing/paused flags reported by ``state.cgi``, and only then the
+        display text as a last resort.
         """
-        # Real-time state from UPnP NOTIFY events.
-        transport_state = self._upnp_state.get("transport_state")
-        if transport_state is not None:
-            if transport_state == "PLAYING":
-                return MediaPlayerState.PLAYING
-            if transport_state == "PAUSED_PLAYBACK":
-                return MediaPlayerState.PAUSED
-            if transport_state in ("STOPPED", "NO_MEDIA_PRESENT"):
-                return MediaPlayerState.IDLE
+        transport_state = self.coordinator.upnp.transport_state
+        if transport_state and transport_state in _TRANSPORT_STATES:
+            return _TRANSPORT_STATES[transport_state]
 
-        # Fallback: derive state from polled coordinator data.
-        if not self.coordinator.data:
+        data = self.coordinator.data
+        if data is None:
             return MediaPlayerState.OFF
 
-        state_data = self.coordinator.data.get("state", {})
-        display = state_data.get("display", "")
-
-        if "clock" in display.lower():
-            return MediaPlayerState.IDLE
-        if "playing" in display.lower() or state_data.get("playing") == "1":
+        # state.cgi reports these as "0"/"1" strings, so they have to be
+        # compared explicitly — a bare truthiness check treats "0" as True
+        # and leaves the player stuck on "playing" after pausing it on the
+        # device itself.
+        if data.state.get("playing") == "1":
             return MediaPlayerState.PLAYING
-        if "pause" in display.lower() or state_data.get("paused") == "1":
+        if data.state.get("paused") == "1":
             return MediaPlayerState.PAUSED
 
+        display = data.state.get("display", "").lower()
+        # The MusicPal shows the clock screen while in standby, which is what
+        # "power_down" puts it into — report that as off so the power buttons
+        # reflect reality.
+        if "clock" in display:
+            return MediaPlayerState.OFF
+        if "playing" in display:
+            return MediaPlayerState.PLAYING
+        if "pause" in display:
+            return MediaPlayerState.PAUSED
         return MediaPlayerState.IDLE
 
     @property
-    def volume_level(self) -> Optional[float]:
+    def volume_level(self) -> float | None:
         """Volume level of the media player (0..1)."""
-        if not self.coordinator.data:
+        data = self.coordinator.data
+        if data is None or data.volume is None:
             return None
-
-        volume = self.coordinator.data.get("volume", 0)
-        return volume / 20.0  # Convert from 0-20 to 0-1
+        return data.volume / VOLUME_MAX
 
     @property
-    def source_list(self) -> Optional[list[str]]:
-        """List of available input sources."""
-        if not self.coordinator.data:
+    def source_list(self) -> list[str] | None:
+        """List of available input sources (the device favorites)."""
+        data = self.coordinator.data
+        if data is None:
             return None
-
-        favorites = self.coordinator.data.get("favorites", [])
-        return [fav["name"] for fav in favorites]
+        return [str(fav["name"]) for fav in data.favorites]
 
     @property
-    def media_title(self) -> Optional[str]:
-        """Title of current playing media."""
-        # Prefer the title set via async_play_media (includes metadata).
-        # if self._media_title:
-        #    return self._media_title
-        # Fall back to the now_playing string fetched from the device.
-        if self.coordinator.data:
-            now_playing: str = self.coordinator.data.get("now_playing", "")
-            if now_playing:
-                return now_playing
+    def source(self) -> str | None:
+        """Return the currently selected favorite, when it can be told."""
+        data = self.coordinator.data
+        if data is None:
+            return self._selected_source
+
+        now_playing = data.now_playing.lower()
+        for fav in data.favorites:
+            name = str(fav["name"])
+            if name and name.lower() in now_playing:
+                return name
+        return self._selected_source
+
+    @property
+    def media_title(self) -> str | None:
+        """Title of the currently playing media."""
+        # Track metadata pushed via UPnP is more precise than the screen text.
+        if title := self.coordinator.upnp.track_title:
+            return title
+        data = self.coordinator.data
+        if data is not None and data.now_playing:
+            return data.now_playing
         return None
 
     @property
-    def media_content_id(self) -> Optional[str]:
+    def media_content_id(self) -> str | None:
         """Content ID (URL) of the currently playing media."""
-        return self._upnp_state.get("avt_uri")
+        return self.coordinator.upnp.avt_uri
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return entity specific state attributes."""
-        if not self.coordinator.data:
+        data = self.coordinator.data
+        if data is None:
             return {}
 
         attrs: dict[str, Any] = {}
-
-        if uptime := self.coordinator.data.get("uptime"):
-            attrs[ATTR_UPTIME] = str(uptime)
-
-        if favorites := self.coordinator.data.get("favorites"):
-            attrs[ATTR_FAVORITES] = len(favorites)
-
+        if data.uptime is not None:
+            attrs[ATTR_UPTIME] = str(data.uptime)
+        if data.favorites:
+            attrs[ATTR_FAVORITES] = len(data.favorites)
         return attrs
 
-    async def async_turn_on(self) -> None:
-        """Turn the media player on."""
+    # --- helpers ----------------------------------------------------------
+
+    async def _async_command(self, action: str, coro: Any) -> None:
+        """Await a device command and surface failures to the caller."""
         try:
-            async with self._make_client() as api:
-                await api.power_on()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to turn on MusicPal: %s", err)
+            await coro
+        except MusicPalError as err:
+            raise HomeAssistantError(f"Failed to {action}: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+    # --- commands ---------------------------------------------------------
+
+    async def async_turn_on(self) -> None:
+        """Wake the device from standby."""
+        await self._async_command(
+            "turn on MusicPal", self.coordinator.client.power_on()
+        )
 
     async def async_turn_off(self) -> None:
-        """Turn the media player off."""
-        try:
-            async with self._make_client() as api:
-                await api.power_off()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to turn off MusicPal: %s", err)
+        """Send the device to standby."""
+        await self._async_command(
+            "turn off MusicPal", self.coordinator.client.power_off()
+        )
 
     async def async_set_volume_level(self, volume: float) -> None:
-        """Set volume level, range 0..1."""
-        try:
-            volume_int = int(volume * 20)  # Convert from 0-1 to 0-20
-            async with self._make_client() as api:
-                await api.set_volume(volume_int)
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to set volume: %s", err)
+        """Set the volume level, range 0..1."""
+        await self._async_command(
+            "set volume",
+            self.coordinator.client.set_volume(round(volume * VOLUME_MAX)),
+        )
 
     async def async_volume_up(self) -> None:
-        """Volume up the media player."""
-        try:
-            async with self._make_client() as api:
-                await api.volume_up()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to increase volume: %s", err)
+        """Increase the volume by one step."""
+        await self._async_command(
+            "increase volume", self.coordinator.client.volume_up()
+        )
 
     async def async_volume_down(self) -> None:
-        """Volume down the media player."""
-        try:
-            async with self._make_client() as api:
-                await api.volume_down()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to decrease volume: %s", err)
+        """Decrease the volume by one step."""
+        await self._async_command(
+            "decrease volume", self.coordinator.client.volume_down()
+        )
 
     async def async_media_play(self) -> None:
-        """Send play command."""
-        try:
-            async with self._make_client() as api:
-                await api.play_pause()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to play: %s", err)
+        """Resume playback.
+
+        The device only offers a play/pause toggle, so the command is only
+        sent when it would actually change something.
+        """
+        if self.state == MediaPlayerState.PLAYING:
+            return
+        await self._async_command(
+            "start playback", self.coordinator.client.play_pause()
+        )
 
     async def async_media_pause(self) -> None:
-        """Send pause command."""
-        try:
-            async with self._make_client() as api:
-                await api.play_pause()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to pause: %s", err)
+        """Pause playback (see :meth:`async_media_play` about the toggle)."""
+        if self.state in (MediaPlayerState.PAUSED, MediaPlayerState.OFF):
+            return
+        await self._async_command(
+            "pause playback", self.coordinator.client.play_pause()
+        )
 
     async def async_media_stop(self) -> None:
-        """Send stop command."""
-        try:
-            async with self._make_client() as api:
-                await api.play_pause()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to stop: %s", err)
+        """Stop playback.
+
+        The firmware has no dedicated stop command, so this pauses instead.
+        """
+        await self.async_media_pause()
 
     async def async_media_next_track(self) -> None:
-        """Send next track command."""
-        try:
-            async with self._make_client() as api:
-                await api.next_track()
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to skip to next track: %s", err)
+        """Skip to the next track."""
+        await self._async_command(
+            "skip to the next track", self.coordinator.client.next_track()
+        )
 
     async def async_play_media(
-        self, media_type: str, media_id: str, **kwargs: Any
+        self, media_type: MediaType | str, media_id: str, **kwargs: Any
     ) -> None:
         """Play a piece of media."""
-        try:
-            # Get metadata from kwargs (provided by Music Assistant, etc.)
-            metadata = kwargs.get("metadata", {})
-            title = (
-                kwargs.get("title")
-                or metadata.get("title")
-                or kwargs.get("media_title")
+        if media_source.is_media_source_id(media_id):
+            play_item = await media_source.async_resolve_media(
+                self.hass, media_id, self.entity_id
             )
-            artist = (
-                kwargs.get("artist")
-                or metadata.get("artist")
-                or kwargs.get("media_artist")
-            )
-            album = (
-                kwargs.get("album")
-                or metadata.get("album")
-                or kwargs.get("media_album_name")
-            )
+            media_id = play_item.url
 
-            # Build display message from available metadata
-            if title:
-                display_parts = [title]
-                if artist:
-                    display_parts.append(f"by {artist}")
-                if album:
-                    display_parts.append(f"({album})")
-                display_message = " ".join(display_parts)
-                self._media_title = title
-            else:
-                # No metadata provided
-                display_message = "Unknown"
-                self._media_title = None
+        media_id = async_process_play_media_url(self.hass, media_id)
 
-            async with self._make_client() as api:
-                # Show the metadata on the device display
-                # await api.show_message(display_message)
-                # Play the media
-                await api.play_url(media_id)
+        await self._async_command(
+            "play media", self.coordinator.client.play_url(media_id)
+        )
 
-            # Keep content ID in sync so media_content_id reflects the URL.
-            self._upnp_state["avt_uri"] = media_id
+        # Keep media_content_id meaningful even without UPnP eventing.
+        self.coordinator.upnp.avt_uri = media_id
+        self._selected_source = None
 
-            _LOGGER.info(
-                "Playing media: %s (URL: %s, kwargs: %s)",
-                display_message,
-                media_id,
-                kwargs,
-            )
-            await self.coordinator.async_request_refresh()
-        except httpx.HTTPError as err:
-            _LOGGER.error("Failed to play media: %s", err)
+    async def async_browse_media(
+        self,
+        media_content_type: MediaType | str | None = None,
+        media_content_id: str | None = None,
+    ) -> BrowseMedia:
+        """Browse Home Assistant media sources."""
+        return await media_source.async_browse_media(
+            self.hass,
+            media_content_id,
+            content_filter=lambda item: item.media_content_type.startswith(
+                "audio/"
+            ),
+        )
 
     async def async_select_source(self, source: str) -> None:
-        """Select input source (favorite)."""
-        if not self.coordinator.data:
-            return
+        """Select an input source (a device favorite)."""
+        data = self.coordinator.data
+        favorites = data.favorites if data else []
 
-        favorites = self.coordinator.data.get("favorites", [])
         for fav in favorites:
-            if fav["name"] == source:
-                try:
-                    async with self._make_client() as api:
-                        await api.play_favorite(fav["index"])
-                    await self.coordinator.async_request_refresh()
-                    return
-                except httpx.HTTPError as err:
-                    _LOGGER.error("Failed to select source: %s", err)
-                    return
+            if str(fav["name"]) == source:
+                self._selected_source = source
+                await self._async_command(
+                    f"select favorite '{source}'",
+                    self.coordinator.client.play_favorite(int(fav["index"])),
+                )
+                return
 
-        _LOGGER.warning("Source %s not found in favorites", source)
+        raise ServiceValidationError(
+            f"'{source}' is not a MusicPal favorite. Available: "
+            + (", ".join(str(fav["name"]) for fav in favorites) or "none")
+        )
+
+    # --- entity services --------------------------------------------------
+
+    async def async_show_message(self, message: str) -> None:
+        """Show a message box on the device display."""
+        await self._async_command(
+            "show the message", self.coordinator.client.show_message(message)
+        )
+
+    async def async_show_clock(self) -> None:
+        """Show the clock screen on the device display."""
+        await self._async_command(
+            "show the clock", self.coordinator.client.show_clock()
+        )
+
+    async def async_reboot(self) -> None:
+        """Reboot the device."""
+        try:
+            await self.coordinator.client.reboot()
+        except MusicPalError as err:
+            raise HomeAssistantError(f"Failed to reboot: {err}") from err
+        # Uptime and device info are stale after a reboot.
+        self.coordinator.async_invalidate_slow_data()
