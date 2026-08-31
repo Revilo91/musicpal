@@ -38,7 +38,7 @@ See [HACS_README.md](HACS_README.md) for detailed installation instructions, or 
 ### Development
 
 ```bash
-pip install -e ".[dev]"   # tooling and test dependencies
+pip install -e ".[dev]" --config-settings editable_mode=compat  # tooling and test dependencies
 pre-commit run --all-files
 pytest tests/
 ```

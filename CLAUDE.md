@@ -105,7 +105,7 @@ Playing a URL and selecting a favorite are covered by the standard
 
 ```bash
 # Install dependencies
-pip install -e ".[dev]"
+pip install -e ".[dev]" --config-settings editable_mode=compat
 
 # Run pre-commit hooks manually
 pre-commit run --all-files

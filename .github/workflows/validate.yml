@@ -25,6 +25,10 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # "topics" needs a GitHub repo setting (not repo content) and
+          # "brands" requires a home-assistant/brands submission; both are
+          # external to this repository, so don't fail CI on them.
+          ignore: brands topics
 
   lint:
     name: Lint and type check
@@ -59,6 +63,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]"
+          pip install -e ".[test]" --config-settings editable_mode=compat
       - name: Run pytest
         run: pytest tests/
